@@ -1,3 +1,4 @@
+-- === Services ===
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -6,7 +7,7 @@ local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 
 local plr = Players.LocalPlayer
-local HIGH = Enum.AnimationPriority.Action4 or Enum.AnimationPriority.Action3
+local HIGH = Enum.AnimationPriority.Action4
 
 -- === Speed & Movement Configuration ===
 local MIN_ANIM_SPEED = 0.001 
@@ -87,6 +88,52 @@ gui.Name = "AnimOverride"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = plr:WaitForChild("PlayerGui")
+
+-- === Intro Screen ===
+local introOverlay = Instance.new("Frame", gui)
+introOverlay.Size = UDim2.fromScale(1, 1)
+introOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+introOverlay.BackgroundTransparency = 0.5
+introOverlay.BorderSizePixel = 0
+introOverlay.ZIndex = 100
+
+local introContainer = Instance.new("Frame", introOverlay)
+introContainer.Size = UDim2.fromOffset(300, 100)
+introContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+introContainer.Position = UDim2.fromScale(0.5, 0.5)
+introContainer.BackgroundTransparency = 1
+introContainer.ZIndex = 101
+
+local introTitle = Instance.new("TextLabel", introContainer)
+introTitle.Size = UDim2.new(1, 0, 0, 50)
+introTitle.Position = UDim2.fromScale(0, 0)
+introTitle.BackgroundTransparency = 1
+introTitle.TextColor3 = Color3.new(1, 1, 1)
+introTitle.Font = Enum.Font.SourceSansBold
+introTitle.TextSize = 32
+introTitle.Text = "AnimOverride"
+introTitle.ZIndex = 101
+
+local introSubtitle = Instance.new("TextLabel", introContainer)
+introSubtitle.Size = UDim2.new(1, 0, 0, 30)
+introSubtitle.Position = UDim2.fromOffset(0, 50)
+introSubtitle.BackgroundTransparency = 1
+introSubtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+introSubtitle.Font = Enum.Font.SourceSansSemibold
+introSubtitle.TextSize = 18
+introSubtitle.Text = "by Suta Burger"
+introSubtitle.ZIndex = 101
+
+-- Fade out intro after 1 second delay
+task.delay(1, function()
+    local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(introOverlay, tweenInfo, {BackgroundTransparency = 1}):Play()
+    TweenService:Create(introTitle, tweenInfo, {TextTransparency = 1}):Play()
+    TweenService:Create(introSubtitle, tweenInfo, {TextTransparency = 1}):Play()
+    
+    task.wait(1.5)
+    introOverlay:Destroy()
+end)
 
 -- === UI Toggle Keybind (= key) & Notification ===
 UserInputService.InputBegan:Connect(function(input)
@@ -537,7 +584,11 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     bc.CornerRadius = UDim.new(1, 0)
     
     local fill = Instance.new("Frame", bar)
-    fill.Size = UDim2.new((defaultVal - getMinLimit()) / (getMaxLimit() - getMinLimit()), 0, 1, 0)
+    local initialMin = getMinLimit()
+    local initialMax = getMaxLimit()
+    local initialRange = math.max(initialMax - initialMin, 0.001)
+    local initialRatio = math.clamp((defaultVal - initialMin) / initialRange, 0, 1)
+    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
     fill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
     fill.BorderSizePixel = 0
     local fc = Instance.new("UICorner", fill)
@@ -586,7 +637,8 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
         end
         
         currentValHolder = val
-        local ratio = (val - currentMin) / (currentMax - currentMin)
+        local range = math.max(currentMax - currentMin, 0.001)
+        local ratio = math.clamp((val - currentMin) / range, 0, 1)
         fill.Size = UDim2.new(ratio, 0, 1, 0)
         label.Text = formatLabelText(val, isReset)
         callback(val, isReset)
@@ -618,8 +670,8 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
         end
         if labelText == "WalkSpeed" then
             isWalkSpeedActive = false
-            updateValue(16, true)
-            callback(originalWalkSpeed, true)
+            currentWalkSpeed = originalWalkSpeed
+            updateValue(originalWalkSpeed, true)
         else
             currentAnimMultiplier = 1.0
             updateValue(1.0, true)
@@ -646,7 +698,10 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
                     end
                     
                     precisionTitle.Text = labelText .. " (Precision): " .. string.format("%.2f", currentValHolder)
-                    local ratio = (currentValHolder - getMinLimit()) / (getMaxLimit() - getMinLimit())
+                    local precisionMin = getMinLimit()
+                    local precisionMax = getMaxLimit()
+                    local precisionRange = math.max(precisionMax - precisionMin, 0.001)
+                    local ratio = math.clamp((currentValHolder - precisionMin) / precisionRange, 0, 1)
                     screenFill.Size = UDim2.new(ratio, 0, 1, 0)
                     precisionOverlay.Visible = true
                 end
@@ -1005,89 +1060,158 @@ local function detectAntiCheatAndStartLoop()
     end)
 end
 
-local function startAnimLoop()
-    if eventConn then eventConn:Disconnect() end
+local function getAnimationSpeed(groundSpeed)
+    if activeAnimConfig.isPose or activeAnimConfig.speedScaled == false then
+        return currentAnimMultiplier
+    end
 
-    eventConn = animator.AnimationPlayed:Connect(function(t)
-        if enabled and track and t ~= track and t ~= tallTrack and t ~= shortTrack then
-            pcall(function() t:Stop() end)
+    local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
+    local speedRatio = groundSpeed / baseWalkSpeed
+    local baseAnimationSpeed = math.clamp(
+        speedRatio,
+        MIN_ANIM_SPEED,
+        MAX_ANIM_SPEED
+    )
+
+    return math.clamp(
+        baseAnimationSpeed * currentAnimMultiplier,
+        MIN_ANIM_SPEED,
+        MAX_ANIM_SPEED
+    )
+end
+
+local function ensureTrackPlaying(animationTrack)
+    if not animationTrack or animationTrack.IsPlaying then
+        return
+    end
+
+    pcall(function()
+        animationTrack:Play(0.1, 1, 0)
+    end)
+end
+
+local function freezePoseTrack(animationTrack)
+    if not animationTrack then
+        return
+    end
+
+    ensureTrackPlaying(animationTrack)
+
+    pcall(function()
+        if animationTrack.Length > 0 then
+            animationTrack.TimePosition = math.min(
+                STATIONARY_REST_TIME,
+                math.max(animationTrack.Length - 0.001, 0)
+            )
+        end
+
+        animationTrack:AdjustSpeed(0)
+    end)
+end
+
+local function startAnimLoop()
+    if not animator then
+        return
+    end
+
+    if eventConn then
+        eventConn:Disconnect()
+        eventConn = nil
+    end
+
+    eventConn = animator.AnimationPlayed:Connect(function(animationTrack)
+        if not enabled then
+            return
+        end
+
+        if animationTrack ~= track
+            and animationTrack ~= tallTrack
+            and animationTrack ~= shortTrack then
+
+            pcall(function()
+                animationTrack:Stop()
+            end)
         end
     end)
 
-    if not globalLoopConn then
-        globalLoopConn = RunService.RenderStepped:Connect(function(dt)
-            if not animator then return end
-            
-            for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                if t ~= tallTrack and t ~= shortTrack and t ~= track then
-                    pcall(function()
-                        t:AdjustSpeed(currentAnimMultiplier)
-                    end)
-                end
-            end
-            
-            if tallEnabled and tallTrack then
-                if not tallTrack.IsPlaying then
-                    pcall(function() tallTrack:Play(0.1, 1, 0) end)
-                end
-                pcall(function()
-                    if tallTrack.Length > 0 and tallTrack.TimePosition == 0 then
-                        tallTrack.TimePosition = math.min(0.1, tallTrack.Length)
-                    end
-                    tallTrack:AdjustSpeed(0)
-                end)
-            end
-
-            if shortEnabled and shortTrack then
-                if not shortTrack.IsPlaying then
-                    pcall(function() shortTrack:Play(0.1, 1, 0) end)
-                end
-                pcall(function()
-                    if shortTrack.Length > 0 and shortTrack.TimePosition == 0 then
-                        shortTrack.TimePosition = math.min(0.1, shortTrack.Length)
-                    end
-                    shortTrack:AdjustSpeed(0)
-                end)
-            end
-
-            if not enabled or not track then return end
-
-            for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                if t ~= track and t ~= tallTrack and t ~= shortTrack and t.IsPlaying then
-                    pcall(function() t:Stop() end)
-                end
-            end
-            
-            if not track.IsPlaying then
-                pcall(function() track:Play(0.1, 1, 1) end)
-            end
-            
-            if rootPart and rootPart.Parent and track.IsPlaying then
-                local vel = rootPart.AssemblyLinearVelocity
-                local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-                
-                -- Only apply resting frame smoothly if it's an override (not a pose/dance)
-                if not activeAnimConfig.isPose and groundSpeed < 0.1 then
-                    pcall(function()
-                        track.TimePosition = track.TimePosition + (STATIONARY_REST_TIME - track.TimePosition) * math.clamp(dt * 10, 0, 1)
-                        track:AdjustSpeed(0)
-                    end)
-                else
-                    if activeAnimConfig.isPose then
-                        pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
-                    elseif activeAnimConfig.speedScaled == false then
-                        pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
-                    else
-                        local speedRatio = groundSpeed / originalWalkSpeed
-                        local baseAnimSpeed = math.clamp(speedRatio, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-                        local finalAnimSpeed = baseAnimSpeed * currentAnimMultiplier
-                        
-                        pcall(function() track:AdjustSpeed(finalAnimSpeed) end)
-                    end
-                end
-            end
-        end)
+    if globalLoopConn then
+        return
     end
+
+    globalLoopConn = RunService.RenderStepped:Connect(function(dt)
+        if not animator or not animator.Parent then
+            return
+        end
+
+        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            if animationTrack ~= track
+                and animationTrack ~= tallTrack
+                and animationTrack ~= shortTrack then
+
+                pcall(function()
+                    animationTrack:AdjustSpeed(currentAnimMultiplier)
+                end)
+            end
+        end
+
+        if tallEnabled and tallTrack then
+            freezePoseTrack(tallTrack)
+        end
+
+        if shortEnabled and shortTrack then
+            freezePoseTrack(shortTrack)
+        end
+
+        if not enabled or not track then
+            return
+        end
+
+        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            if animationTrack ~= track
+                and animationTrack ~= tallTrack
+                and animationTrack ~= shortTrack
+                and animationTrack.IsPlaying then
+
+                pcall(function()
+                    animationTrack:Stop()
+                end)
+            end
+        end
+
+        ensureTrackPlaying(track)
+
+        if not rootPart or not rootPart.Parent or not track.IsPlaying then
+            return
+        end
+
+        local velocity = rootPart.AssemblyLinearVelocity
+        local groundSpeed = Vector3.new(
+            velocity.X,
+            0,
+            velocity.Z
+        ).Magnitude
+
+        if not activeAnimConfig.isPose and groundSpeed < 0.1 then
+            pcall(function()
+                local targetPosition = math.min(
+                    STATIONARY_REST_TIME,
+                    math.max(track.Length - 0.001, 0)
+                )
+
+                track.TimePosition += (
+                    targetPosition - track.TimePosition
+                ) * math.clamp(dt * 10, 0, 1)
+
+                track:AdjustSpeed(0)
+            end)
+        else
+            local animationSpeed = getAnimationSpeed(groundSpeed)
+
+            pcall(function()
+                track:AdjustSpeed(animationSpeed)
+            end)
+        end
+    end)
 end
 
 local function loadAnim(idStr, speedScaled, hipHeightEnabled)
@@ -1111,16 +1235,18 @@ local function loadAnim(idStr, speedScaled, hipHeightEnabled)
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://" .. id
     
-    local ok, t = pcall(function()
+    local ok, newTrack = pcall(function()
         return animator:LoadAnimation(a)
     end)
     
-    if not ok or not t then
+    a:Destroy()
+
+    if not ok or not newTrack then
         say("Engine failed to load. (Private asset or bad ID)")
         return false
     end
 
-    track = t
+    track = newTrack
     track.Priority = HIGH
     track.Looped = true
     
@@ -1158,12 +1284,14 @@ local function playOneUsePose(idStr)
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://" .. id
     
-    local ok, t = pcall(function()
+    local ok, newTrack = pcall(function()
         return animator:LoadAnimation(a)
     end)
     
-    if ok and t then
-        track = t
+    a:Destroy()
+
+    if ok and newTrack then
+        track = newTrack
         track.Priority = Enum.AnimationPriority.Action4
         track.Looped = true
         track:Play(0.1, 1, currentAnimMultiplier)
@@ -1333,22 +1461,24 @@ local function applyTallPose()
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://92807081069528"
     
-    local ok, t = pcall(function()
+    local ok, newTrack = pcall(function()
         return animator:LoadAnimation(a)
     end)
     
-    if ok and t then
-        tallTrack = t
+    a:Destroy()
+
+    if ok and newTrack then
+        tallTrack = newTrack
         tallTrack.Priority = Enum.AnimationPriority.Action4 
         tallTrack.Looped = true
-        tallTrack:Play(0.1, 1, 1)
+        
+        pcall(function()
+            tallTrack:Play(0.1, 1, 0)
+        end)
         
         task.delay(0.1, function()
             if tallTrack and tallEnabled then
-                if tallTrack.Length > 0 then
-                    tallTrack.TimePosition = math.min(0.1, tallTrack.Length)
-                end
-                tallTrack:AdjustSpeed(0)
+                freezePoseTrack(tallTrack)
             end
         end)
         
@@ -1384,22 +1514,24 @@ local function applyShortPose()
     local a = Instance.new("Animation")
     a.AnimationId = "rbxassetid://137317695640929"
     
-    local ok, t = pcall(function()
+    local ok, newTrack = pcall(function()
         return animator:LoadAnimation(a)
     end)
     
-    if ok and t then
-        shortTrack = t
+    a:Destroy()
+
+    if ok and newTrack then
+        shortTrack = newTrack
         shortTrack.Priority = Enum.AnimationPriority.Action4 
         shortTrack.Looped = true
-        shortTrack:Play(0.1, 1, 1)
+        
+        pcall(function()
+            shortTrack:Play(0.1, 1, 0)
+        end)
         
         task.delay(0.1, function()
             if shortTrack and shortEnabled then
-                if shortTrack.Length > 0 then
-                    shortTrack.TimePosition = math.min(0.1, shortTrack.Length)
-                end
-                shortTrack:AdjustSpeed(0)
+                freezePoseTrack(shortTrack)
             end
         end)
         

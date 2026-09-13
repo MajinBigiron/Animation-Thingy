@@ -11,6 +11,7 @@ local HIGH = Enum.AnimationPriority.Action4 or Enum.AnimationPriority.Action3
 -- === Speed & Movement Configuration ===
 local MIN_ANIM_SPEED = 0.001 
 local MAX_ANIM_SPEED = 5.0 
+local STATIONARY_REST_TIME = 0.5 -- Change this number (in seconds) to pick the exact frame/timestamp where limbs rest on the ground for overrides
 
 local originalWalkSpeed = 16
 local currentWalkSpeed = 16
@@ -107,8 +108,8 @@ end)
 
 -- Main Control Panel (Left Middle)
 local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.fromOffset(250, 420)
-mainFrame.Position = UDim2.new(0, 20, 0.5, -210)
+mainFrame.Size = UDim2.fromOffset(250, 415)
+mainFrame.Position = UDim2.new(0, 20, 0.5, -207.5)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 mainFrame.BorderSizePixel = 0
 
@@ -117,8 +118,8 @@ mainCorner.CornerRadius = UDim.new(0, 8)
 
 -- Custom Saves Panel (Right Middle)
 local savesFrame = Instance.new("Frame", gui)
-savesFrame.Size = UDim2.fromOffset(250, 310)
-savesFrame.Position = UDim2.new(1, -270, 0.5, -155)
+savesFrame.Size = UDim2.fromOffset(250, 345)
+savesFrame.Position = UDim2.new(1, -270, 0.5, -172.5)
 savesFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 savesFrame.BorderSizePixel = 0
 savesFrame.Visible = false
@@ -304,10 +305,21 @@ local function mkModal(parent, cls, x, y, w, h, text)
     return o
 end
 
+-- === Speedometer Label (Right above Speed Settings) ===
+local speedometerLabel = Instance.new("TextLabel", mainFrame)
+speedometerLabel.Size = UDim2.fromOffset(230, 20)
+speedometerLabel.Position = UDim2.fromOffset(10, 10)
+speedometerLabel.BackgroundTransparency = 1
+speedometerLabel.TextColor3 = Color3.fromRGB(150, 220, 255)
+speedometerLabel.Font = Enum.Font.SourceSansBold
+speedometerLabel.TextSize = 13
+speedometerLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedometerLabel.Text = "Current Speed: 0.0"
+
 -- === Speed Settings Header & Collapsible Sliders Container ===
 local speedTitle = Instance.new("TextLabel", mainFrame)
 speedTitle.Size = UDim2.fromOffset(150, 24)
-speedTitle.Position = UDim2.fromOffset(10, 10)
+speedTitle.Position = UDim2.fromOffset(10, 35)
 speedTitle.BackgroundTransparency = 1
 speedTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
 speedTitle.Font = Enum.Font.SourceSansBold
@@ -319,7 +331,7 @@ makeDraggable(mainFrame, speedTitle)
 
 local minimizeBtn = Instance.new("TextButton", mainFrame)
 minimizeBtn.Size = UDim2.fromOffset(60, 24)
-minimizeBtn.Position = UDim2.fromOffset(180, 10)
+minimizeBtn.Position = UDim2.fromOffset(180, 35)
 minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
 minimizeBtn.Font = Enum.Font.SourceSansSemibold
@@ -331,21 +343,20 @@ minCorner.CornerRadius = UDim.new(0, 4)
 
 local sliderContainer = Instance.new("Frame", mainFrame)
 sliderContainer.Size = UDim2.fromOffset(230, 90)
-sliderContainer.Position = UDim2.fromOffset(10, 38)
+sliderContainer.Position = UDim2.fromOffset(10, 63)
 sliderContainer.BackgroundTransparency = 1
 
-local box = mk(mainFrame, "TextBox", 138, 32)
+local box = mk(mainFrame, "TextBox", 163, 32)
 box.PlaceholderText = "Animation ID"
 box.Text = ""
 box.ClearTextOnFocus = false
 
-local btn = mk(mainFrame, "TextButton", 178, 32, "Play")
-local btnSpider = mk(mainFrame, "TextButton", 218, 32, "Preset: Spider Crawl")
-local btnCar = mk(mainFrame, "TextButton", 258, 32, "Preset: Race-Car")
-local btnTall = mk(mainFrame, "TextButton", 298, 32, "Tall: OFF")
-local btnToggleSaves = mk(mainFrame, "TextButton", 338, 32, "Custom Saves: OFF")
+local btn = mk(mainFrame, "TextButton", 203, 32, "Play")
+local btnTall = mk(mainFrame, "TextButton", 243, 32, "Tall: OFF")
+local btnShort = mk(mainFrame, "TextButton", 283, 32, "Short: OFF")
+local btnToggleSaves = mk(mainFrame, "TextButton", 323, 32, "Custom Saves: OFF")
 
-local status = mk(mainFrame, "TextLabel", 378, 34)
+local status = mk(mainFrame, "TextLabel", 363, 34)
 status.BackgroundTransparency = 1
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.TextWrapped = true
@@ -359,23 +370,21 @@ local function setSpeedMinimized(state)
     sliderContainer.Visible = not isSpeedMinimized
     
     if isSpeedMinimized then
-        mainFrame.Size = UDim2.fromOffset(250, 326)
-        box.Position = UDim2.fromOffset(10, 44)
-        btn.Position = UDim2.fromOffset(10, 84)
-        btnSpider.Position = UDim2.fromOffset(10, 124)
-        btnCar.Position = UDim2.fromOffset(10, 164)
-        btnTall.Position = UDim2.fromOffset(10, 204)
-        btnToggleSaves.Position = UDim2.fromOffset(10, 244)
-        status.Position = UDim2.fromOffset(10, 284)
+        mainFrame.Size = UDim2.fromOffset(250, 316)
+        box.Position = UDim2.fromOffset(10, 69)
+        btn.Position = UDim2.fromOffset(10, 109)
+        btnTall.Position = UDim2.fromOffset(10, 149)
+        btnShort.Position = UDim2.fromOffset(10, 189)
+        btnToggleSaves.Position = UDim2.fromOffset(10, 224)
+        status.Position = UDim2.fromOffset(10, 264)
     else
-        mainFrame.Size = UDim2.fromOffset(250, 420)
-        box.Position = UDim2.fromOffset(10, 138)
-        btn.Position = UDim2.fromOffset(10, 178)
-        btnSpider.Position = UDim2.fromOffset(10, 218)
-        btnCar.Position = UDim2.fromOffset(10, 258)
-        btnTall.Position = UDim2.fromOffset(10, 298)
-        btnToggleSaves.Position = UDim2.fromOffset(10, 338)
-        status.Position = UDim2.fromOffset(10, 378)
+        mainFrame.Size = UDim2.fromOffset(250, 415)
+        box.Position = UDim2.fromOffset(10, 163)
+        btn.Position = UDim2.fromOffset(10, 203)
+        btnTall.Position = UDim2.fromOffset(10, 243)
+        btnShort.Position = UDim2.fromOffset(10, 283)
+        btnToggleSaves.Position = UDim2.fromOffset(10, 323)
+        status.Position = UDim2.fromOffset(10, 363)
     end
 end
 
@@ -493,14 +502,16 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
     
-    local function formatLabelText(val)
-        if labelText == "Animation Speed" and val == 1.0 then
+    local function formatLabelText(val, isResetState)
+        if labelText == "Animation Speed" and (val == 1.0 and isResetState) then
+            return labelText .. ": Default"
+        elseif labelText == "WalkSpeed" and (not isWalkSpeedActive or isResetState) then
             return labelText .. ": Default"
         end
         return labelText .. ": " .. tostring(val)
     end
     
-    label.Text = formatLabelText(defaultVal)
+    label.Text = formatLabelText(defaultVal, labelText == "WalkSpeed" or labelText == "Animation Speed")
     
     label.MouseButton1Click:Connect(function()
         openSpeedModal(labelText)
@@ -577,7 +588,7 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
         currentValHolder = val
         local ratio = (val - currentMin) / (currentMax - currentMin)
         fill.Size = UDim2.new(ratio, 0, 1, 0)
-        label.Text = formatLabelText(val)
+        label.Text = formatLabelText(val, isReset)
         callback(val, isReset)
         
         if isPrecisionActive and precisionOverlay.Visible then
@@ -591,8 +602,8 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
             updateValue(newDefault, isReset)
         end
     elseif labelText == "Animation Speed" then
-        updateAnimSpeedSlider = function(newDefault)
-            updateValue(newDefault)
+        updateAnimSpeedSlider = function(newDefault, isReset)
+            updateValue(newDefault, isReset)
         end
     end
     
@@ -607,9 +618,11 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
         end
         if labelText == "WalkSpeed" then
             isWalkSpeedActive = false
-            updateValue(originalWalkSpeed, true)
+            updateValue(16, true)
+            callback(originalWalkSpeed, true)
         else
-            updateValue(defaultVal, false)
+            currentAnimMultiplier = 1.0
+            updateValue(1.0, true)
         end
     end)
     
@@ -697,14 +710,14 @@ end)
 
 createSlider(0, "WalkSpeed", 16, function(val, isReset)
     currentWalkSpeed = val
-    isWalkSpeedActive = true
+    if not isReset then
+        isWalkSpeedActive = true
+    end
     if humanoid and humanoid.Parent then
         pcall(function()
             if isReset then
                 isWalkSpeedActive = false
-                if not isGameAntiCheatActive then
-                    humanoid.WalkSpeed = originalWalkSpeed
-                end
+                humanoid.WalkSpeed = originalWalkSpeed
             else
                 if isGameAntiCheatActive then
                     humanoid.WalkSpeed = val
@@ -717,16 +730,27 @@ createSlider(0, "WalkSpeed", 16, function(val, isReset)
     end
 end, function() return minWalkSpeedLimit end, function() return maxWalkSpeedLimit end)
 
-createSlider(48, "Animation Speed", 1.0, function(val)
-    currentAnimMultiplier = val
+createSlider(48, "Animation Speed", 1.0, function(val, isReset)
+    if isReset then
+        currentAnimMultiplier = 1.0
+    else
+        currentAnimMultiplier = val
+    end
 end, function() return minAnimSpeedLimit end, function() return maxAnimSpeedLimit end)
 
 -- Controls inside Custom Saves Panel
 local btnOpenModal = mk(savesFrame, "TextButton", 20, 16, "Add Custom Animation")
 
+local searchBox = mk(savesFrame, "TextBox", 56, 28)
+searchBox.PlaceholderText = "Search custom animations..."
+searchBox.Text = ""
+searchBox.ClearTextOnFocus = false
+searchBox.Font = Enum.Font.SourceSans
+searchBox.TextSize = 12
+
 local overridesLabel = Instance.new("TextLabel", savesFrame)
 overridesLabel.Size = UDim2.fromOffset(230, 18)
-overridesLabel.Position = UDim2.fromOffset(10, 48)
+overridesLabel.Position = UDim2.fromOffset(10, 88)
 overridesLabel.BackgroundTransparency = 1
 overridesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 overridesLabel.Font = Enum.Font.SourceSansBold
@@ -737,8 +761,8 @@ overridesLabel.Text = "Overrides / Loops:"
 makeDraggable(savesFrame, overridesLabel)
 
 local scrollOverrides = Instance.new("ScrollingFrame", savesFrame)
-scrollOverrides.Size = UDim2.fromOffset(230, 95)
-scrollOverrides.Position = UDim2.fromOffset(10, 68)
+scrollOverrides.Size = UDim2.fromOffset(230, 85)
+scrollOverrides.Position = UDim2.fromOffset(10, 108)
 scrollOverrides.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 scrollOverrides.BorderSizePixel = 0
 scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -747,7 +771,7 @@ soCorner.CornerRadius = UDim.new(0, 6)
 
 local posesLabel = Instance.new("TextLabel", savesFrame)
 posesLabel.Size = UDim2.fromOffset(230, 18)
-posesLabel.Position = UDim2.fromOffset(10, 170)
+posesLabel.Position = UDim2.fromOffset(10, 200)
 posesLabel.BackgroundTransparency = 1
 posesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 posesLabel.Font = Enum.Font.SourceSansBold
@@ -756,8 +780,8 @@ posesLabel.TextXAlignment = Enum.TextXAlignment.Left
 posesLabel.Text = "Pose/Dance (Right-Click to Delete):"
 
 local scrollPoses = Instance.new("ScrollingFrame", savesFrame)
-scrollPoses.Size = UDim2.fromOffset(230, 95)
-scrollPoses.Position = UDim2.fromOffset(10, 190)
+scrollPoses.Size = UDim2.fromOffset(230, 85)
+scrollPoses.Position = UDim2.fromOffset(10, 220)
 scrollPoses.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 scrollPoses.BorderSizePixel = 0
 scrollPoses.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -892,8 +916,10 @@ end)
 
 local track = nil
 local tallTrack = nil 
+local shortTrack = nil
 local globalLoopConn, walkSpeedConn, eventConn, enabled = nil, nil, nil, false
 local tallEnabled = false
+local shortEnabled = false
 
 local function say(m)
     status.Text = m
@@ -923,12 +949,14 @@ local function detectAntiCheatAndStartLoop()
     isGameAntiCheatActive = false
     pcall(function()
         if humanoid then
-            local testVal = humanoid.WalkSpeed + 5
+            local originalTestVal = humanoid.WalkSpeed
+            local testVal = originalTestVal + 5
             humanoid.WalkSpeed = testVal
             task.wait(0.05)
             if humanoid.WalkSpeed ~= testVal then
                 isGameAntiCheatActive = true
             end
+            humanoid.WalkSpeed = originalTestVal
         end
     end)
 
@@ -950,17 +978,26 @@ local function detectAntiCheatAndStartLoop()
     end
 
     walkSpeedConn = RunService.RenderStepped:Connect(function()
-        if humanoid and humanoid.Parent and isWalkSpeedActive then
-            if isGameAntiCheatActive then
-                if humanoid.WalkSpeed ~= currentWalkSpeed then
-                    pcall(function() humanoid.WalkSpeed = currentWalkSpeed end)
-                end
-            else
-                local base = originalWalkSpeed > 0 and originalWalkSpeed or 16
-                local target = base + (currentWalkSpeed - 16)
-                if math.abs(humanoid.WalkSpeed - target) > 1 then
-                    if humanoid.WalkSpeed ~= currentWalkSpeed and humanoid.WalkSpeed ~= base then
-                        originalWalkSpeed = humanoid.WalkSpeed
+        if humanoid and humanoid.Parent then
+            local currentVel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+            local currentGroundSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
+            speedometerLabel.Text = string.format("Current Speed: %.1f", currentGroundSpeed)
+            
+            if isWalkSpeedActive then
+                if isGameAntiCheatActive then
+                    if humanoid.WalkSpeed ~= currentWalkSpeed then
+                        pcall(function() humanoid.WalkSpeed = currentWalkSpeed end)
+                    end
+                else
+                    local base = originalWalkSpeed > 0 and originalWalkSpeed or 16
+                    local target = base + (currentWalkSpeed - 16)
+                    if math.abs(humanoid.WalkSpeed - target) > 1 then
+                        if humanoid.WalkSpeed ~= currentWalkSpeed and humanoid.WalkSpeed ~= base then
+                            originalWalkSpeed = humanoid.WalkSpeed
+                        end
+                    end
+                    if humanoid.WalkSpeed ~= target then
+                        pcall(function() humanoid.WalkSpeed = target end)
                     end
                 end
             end
@@ -972,37 +1009,19 @@ local function startAnimLoop()
     if eventConn then eventConn:Disconnect() end
 
     eventConn = animator.AnimationPlayed:Connect(function(t)
-        if enabled and track and t ~= track and t ~= tallTrack then
+        if enabled and track and t ~= track and t ~= tallTrack and t ~= shortTrack then
             pcall(function() t:Stop() end)
         end
     end)
 
     if not globalLoopConn then
-        globalLoopConn = RunService.RenderStepped:Connect(function()
+        globalLoopConn = RunService.RenderStepped:Connect(function(dt)
             if not animator then return end
             
-            local effectiveMultiplier = currentAnimMultiplier
-            if currentAnimMultiplier == 1.0 then
-                local currentWs = (humanoid and humanoid.WalkSpeed) or currentWalkSpeed
-                local baseWs = (originalWalkSpeed > 0 and originalWalkSpeed) or 16
-                effectiveMultiplier = currentWs / baseWs
-            end
-            
             for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                if t ~= tallTrack and t ~= track then
-                    local nameLower = string.lower(t.Name)
-                    local isMovementAnim = string.find(nameLower, "walk") or string.find(nameLower, "run") or string.find(nameLower, "climb") or string.find(nameLower, "swim")
-                    
+                if t ~= tallTrack and t ~= shortTrack and t ~= track then
                     pcall(function()
-                        if currentAnimMultiplier == 1.0 then
-                            if isMovementAnim then
-                                t:AdjustSpeed(effectiveMultiplier)
-                            else
-                                t:AdjustSpeed(1.0)
-                            end
-                        else
-                            t:AdjustSpeed(currentAnimMultiplier)
-                        end
+                        t:AdjustSpeed(currentAnimMultiplier)
                     end)
                 end
             end
@@ -1019,10 +1038,22 @@ local function startAnimLoop()
                 end)
             end
 
+            if shortEnabled and shortTrack then
+                if not shortTrack.IsPlaying then
+                    pcall(function() shortTrack:Play(0.1, 1, 0) end)
+                end
+                pcall(function()
+                    if shortTrack.Length > 0 and shortTrack.TimePosition == 0 then
+                        shortTrack.TimePosition = math.min(0.1, shortTrack.Length)
+                    end
+                    shortTrack:AdjustSpeed(0)
+                end)
+            end
+
             if not enabled or not track then return end
 
             for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                if t ~= track and t ~= tallTrack and t.IsPlaying then
+                if t ~= track and t ~= tallTrack and t ~= shortTrack and t.IsPlaying then
                     pcall(function() t:Stop() end)
                 end
             end
@@ -1032,18 +1063,27 @@ local function startAnimLoop()
             end
             
             if rootPart and rootPart.Parent and track.IsPlaying then
-                if activeAnimConfig.isPose then
-                    pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
-                elseif activeAnimConfig.speedScaled == false then
-                    pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
+                local vel = rootPart.AssemblyLinearVelocity
+                local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+                
+                -- Only apply resting frame smoothly if it's an override (not a pose/dance)
+                if not activeAnimConfig.isPose and groundSpeed < 0.1 then
+                    pcall(function()
+                        track.TimePosition = track.TimePosition + (STATIONARY_REST_TIME - track.TimePosition) * math.clamp(dt * 10, 0, 1)
+                        track:AdjustSpeed(0)
+                    end)
                 else
-                    local vel = rootPart.AssemblyLinearVelocity
-                    local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-                    local speedRatio = groundSpeed / originalWalkSpeed
-                    local baseAnimSpeed = math.clamp(speedRatio, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-                    local finalAnimSpeed = baseAnimSpeed * currentAnimMultiplier
-                    
-                    pcall(function() track:AdjustSpeed(finalAnimSpeed) end)
+                    if activeAnimConfig.isPose then
+                        pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
+                    elseif activeAnimConfig.speedScaled == false then
+                        pcall(function() track:AdjustSpeed(currentAnimMultiplier) end)
+                    else
+                        local speedRatio = groundSpeed / originalWalkSpeed
+                        local baseAnimSpeed = math.clamp(speedRatio, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+                        local finalAnimSpeed = baseAnimSpeed * currentAnimMultiplier
+                        
+                        pcall(function() track:AdjustSpeed(finalAnimSpeed) end)
+                    end
                 end
             end
         end)
@@ -1152,77 +1192,87 @@ function refreshSavesUI()
     
     local overrideCount = 0
     local poseCount = 0
+    local query = string.lower(searchBox.Text)
     
     for i, save in ipairs(saveData.customSaves) do
-        if save.isOverride then
-            overrideCount = overrideCount + 1
-            local saveBtnUI = Instance.new("TextButton", scrollOverrides)
-            saveBtnUI.Size = UDim2.fromOffset(210, 28)
-            saveBtnUI.Position = UDim2.fromOffset(10, (overrideCount - 1) * 32 + 5)
-            saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-            saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
-            saveBtnUI.Font = Enum.Font.SourceSans
-            saveBtnUI.TextSize = 13
-            
-            local speedText = (save.speedScaled == false) and " (Fixed)" or ""
-            local hipText = (save.hipHeightEnabled) and " [Hip]" or ""
-            saveBtnUI.Text = save.name .. speedText .. hipText
-            
-            local c = Instance.new("UICorner", saveBtnUI)
-            c.CornerRadius = UDim.new(0, 4)
-            
-            saveBtnUI.MouseButton1Click:Connect(function()
-                box.Text = save.id
-                local sScaled = (save.speedScaled == true)
-                local hEnabled = (save.hipHeightEnabled == true)
+        local nameLower = string.lower(save.name)
+        local matchesSearch = (query == "" or string.find(nameLower, query, 1, true) ~= nil)
+        
+        if matchesSearch then
+            if save.isOverride then
+                overrideCount = overrideCount + 1
+                local saveBtnUI = Instance.new("TextButton", scrollOverrides)
+                saveBtnUI.Size = UDim2.fromOffset(210, 28)
+                saveBtnUI.Position = UDim2.fromOffset(10, (overrideCount - 1) * 32 + 5)
+                saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+                saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
+                saveBtnUI.Font = Enum.Font.SourceSans
+                saveBtnUI.TextSize = 13
                 
-                isSpeedScaled = sScaled
-                mSpeedBtn.Text = "Speed Scaled: " .. (isSpeedScaled and "ON" or "OFF")
+                local speedText = (save.speedScaled == false) and " (Fixed)" or ""
+                local hipText = (save.hipHeightEnabled) and " [Hip]" or ""
+                saveBtnUI.Text = save.name .. speedText .. hipText
                 
-                loadAnim(save.id, sScaled, hEnabled)
-                enabled = true
-                btn.Text = "Stop"
-                startAnimLoop()
+                local c = Instance.new("UICorner", saveBtnUI)
+                c.CornerRadius = UDim.new(0, 4)
                 
-                say("Loaded override: " .. save.name)
-            end)
-            
-            saveBtnUI.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                    openDeleteModal(i, save.name)
-                end
-            end)
-        else
-            poseCount = poseCount + 1
-            local saveBtnUI = Instance.new("TextButton", scrollPoses)
-            saveBtnUI.Size = UDim2.fromOffset(210, 28)
-            saveBtnUI.Position = UDim2.fromOffset(10, (poseCount - 1) * 32 + 5)
-            saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-            saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
-            saveBtnUI.Font = Enum.Font.SourceSans
-            saveBtnUI.TextSize = 13
-            
-            saveBtnUI.Text = save.name .. " (Pose/Dance)"
-            
-            local c = Instance.new("UICorner", saveBtnUI)
-            c.CornerRadius = UDim.new(0, 4)
-            
-            saveBtnUI.MouseButton1Click:Connect(function()
-                box.Text = save.id
-                playOneUsePose(save.id)
-            end)
-            
-            saveBtnUI.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                    openDeleteModal(i, save.name)
-                end
-            end)
+                saveBtnUI.MouseButton1Click:Connect(function()
+                    box.Text = save.id
+                    local sScaled = (save.speedScaled == true)
+                    local hEnabled = (save.hipHeightEnabled == true)
+                    
+                    isSpeedScaled = sScaled
+                    mSpeedBtn.Text = "Speed Scaled: " .. (isSpeedScaled and "ON" or "OFF")
+                    
+                    loadAnim(save.id, sScaled, hEnabled)
+                    enabled = true
+                    btn.Text = "Stop"
+                    startAnimLoop()
+                    
+                    say("Loaded override: " .. save.name)
+                end)
+                
+                saveBtnUI.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        openDeleteModal(i, save.name)
+                    end
+                end)
+            else
+                poseCount = poseCount + 1
+                local saveBtnUI = Instance.new("TextButton", scrollPoses)
+                saveBtnUI.Size = UDim2.fromOffset(210, 28)
+                saveBtnUI.Position = UDim2.fromOffset(10, (poseCount - 1) * 32 + 5)
+                saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+                saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
+                saveBtnUI.Font = Enum.Font.SourceSans
+                saveBtnUI.TextSize = 13
+                
+                saveBtnUI.Text = save.name .. " (Pose/Dance)"
+                
+                local c = Instance.new("UICorner", saveBtnUI)
+                c.CornerRadius = UDim.new(0, 4)
+                
+                saveBtnUI.MouseButton1Click:Connect(function()
+                    box.Text = save.id
+                    playOneUsePose(save.id)
+                end)
+                
+                saveBtnUI.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                        openDeleteModal(i, save.name)
+                    end
+                end)
+            end
         end
     end
     
     scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, overrideCount * 32)
     scrollPoses.CanvasSize = UDim2.new(0, 0, 0, poseCount * 32)
 end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    refreshSavesUI()
+end)
 
 refreshSavesUI()
 
@@ -1317,7 +1367,58 @@ local function removeTallPose()
         tallTrack = nil
     end
     say("Tall: OFF")
-    if not enabled and globalLoopConn and not tallEnabled then
+    if not enabled and globalLoopConn and not tallEnabled and not shortEnabled then
+        globalLoopConn:Disconnect()
+        globalLoopConn = nil
+    end
+end
+
+local function applyShortPose()
+    if not animator then return end
+    if shortTrack then
+        pcall(function() shortTrack:Stop() end)
+        shortTrack:Destroy()
+        shortTrack = nil
+    end
+
+    local a = Instance.new("Animation")
+    a.AnimationId = "rbxassetid://137317695640929"
+    
+    local ok, t = pcall(function()
+        return animator:LoadAnimation(a)
+    end)
+    
+    if ok and t then
+        shortTrack = t
+        shortTrack.Priority = Enum.AnimationPriority.Action4 
+        shortTrack.Looped = true
+        shortTrack:Play(0.1, 1, 1)
+        
+        task.delay(0.1, function()
+            if shortTrack and shortEnabled then
+                if shortTrack.Length > 0 then
+                    shortTrack.TimePosition = math.min(0.1, shortTrack.Length)
+                end
+                shortTrack:AdjustSpeed(0)
+            end
+        end)
+        
+        if not globalLoopConn then startAnimLoop() end
+        say("Short: ON")
+    else
+        shortEnabled = false
+        btnShort.Text = "Short: OFF"
+    end
+end
+
+local function removeShortPose()
+    if shortTrack then
+        pcall(function() shortTrack:Stop() end)
+        shortTrack:Destroy()
+        shortTrack = nil
+    end
+    say("Short: OFF")
+    if not enabled and globalLoopConn and not tallEnabled and not shortEnabled then
         globalLoopConn:Disconnect()
         globalLoopConn = nil
     end
@@ -1328,9 +1429,6 @@ local function bind(char)
     if not humanoid then return end
     
     originalWalkSpeed = humanoid.WalkSpeed
-    if not isWalkSpeedActive then
-        currentWalkSpeed = originalWalkSpeed
-    end
     
     originalHipHeight = humanoid.HipHeight
     isHipHeightActive = false
@@ -1348,8 +1446,12 @@ local function bind(char)
     animator = humanoid:WaitForChild("Animator", 5)
     track = nil
     tallTrack = nil
+    shortTrack = nil
     tallEnabled = false
+    shortEnabled = false
     btnTall.Text = "Tall: OFF"
+    btnShort.Text = "Short: OFF"
+    btnToggleSaves.Text = "Custom Saves: OFF"
     
     detectAntiCheatAndStartLoop()
     startAnimLoop()
@@ -1380,6 +1482,7 @@ btn.MouseButton1Click:Connect(function()
         if eventConn then eventConn:Disconnect(); eventConn = nil end
         
         applyHipHeight(false)
+        box.Text = "" -- Clears out the Animation ID textbox when stopped
         
         if humanoid and humanoid.MoveDirection.Magnitude > 0 then
             task.delay(0.05, function()
@@ -1395,38 +1498,16 @@ btn.MouseButton1Click:Connect(function()
     end
 end)
 
-btnSpider.MouseButton1Click:Connect(function()
-    box.Text = "92385175886008"
-    isSpeedScaled = true
-    mSpeedBtn.Text = "Speed Scaled: ON"
-    if loadAnim(box.Text, true, true) then
-        if not enabled then
-            enabled = true
-            btn.Text = "Stop"
-            startAnimLoop()
-        end
-        say("Loaded & Active: Spider Crawl")
-    end
-end)
-
-btnCar.MouseButton1Click:Connect(function()
-    box.Text = "72382226286301"
-    isSpeedScaled = true
-    mSpeedBtn.Text = "Speed Scaled: ON"
-    if loadAnim(box.Text, true, true) then
-        if not enabled then
-            enabled = true
-            btn.Text = "Stop"
-            startAnimLoop()
-        end
-        say("Loaded & Active: Race-Car")
-    end
-end)
-
 btnTall.MouseButton1Click:Connect(function()
     tallEnabled = not tallEnabled
     btnTall.Text = "Tall: " .. (tallEnabled and "ON" or "OFF")
     if tallEnabled then applyTallPose() else removeTallPose() end
+end)
+
+btnShort.MouseButton1Click:Connect(function()
+    shortEnabled = not shortEnabled
+    btnShort.Text = "Short: " .. (shortEnabled and "ON" or "OFF")
+    if shortEnabled then applyShortPose() else removeShortPose() end
 end)
 
 btnToggleSaves.MouseButton1Click:Connect(function()
@@ -1443,12 +1524,16 @@ plr.CharacterAdded:Connect(function(char)
     if walkSpeedConn then walkSpeedConn:Disconnect(); walkSpeedConn = nil end
     if eventConn then eventConn:Disconnect(); eventConn = nil end
     if tallTrack then pcall(function() tallTrack:Stop() end); tallTrack = nil end
+    if shortTrack then pcall(function() shortTrack:Stop() end); shortTrack = nil end
     enabled = false
     tallEnabled = false
+    shortEnabled = false
     isHipHeightActive = false
     btn.Text = "Play"
     btnTall.Text = "Tall: OFF"
+    btnShort.Text = "Short: OFF"
     btnToggleSaves.Text = "Custom Saves: OFF"
+    box.Text = ""
     savesFrame.Visible = false
     popupOverlay.Visible = false
     speedModalOverlay.Visible = false

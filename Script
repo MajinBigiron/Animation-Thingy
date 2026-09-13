@@ -145,6 +145,25 @@ modalFrame.ZIndex = 11
 local modalCorner = Instance.new("UICorner", modalFrame)
 modalCorner.CornerRadius = UDim.new(0, 10)
 
+-- Delete Confirmation Popup (Center Screen)
+local deleteModalOverlay = Instance.new("Frame", gui)
+deleteModalOverlay.Size = UDim2.fromScale(1, 1)
+deleteModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+deleteModalOverlay.BackgroundTransparency = 0.5
+deleteModalOverlay.Visible = false
+deleteModalOverlay.ZIndex = 40
+
+local deleteModalFrame = Instance.new("Frame", deleteModalOverlay)
+deleteModalFrame.Size = UDim2.fromOffset(280, 160)
+deleteModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+deleteModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+deleteModalFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+deleteModalFrame.BorderSizePixel = 0
+deleteModalFrame.ZIndex = 41
+
+local deleteModalCorner = Instance.new("UICorner", deleteModalFrame)
+deleteModalCorner.CornerRadius = UDim.new(0, 10)
+
 -- Speed Config Modal Popup (Center Screen for Speed Editor)
 local speedModalOverlay = Instance.new("Frame", gui)
 speedModalOverlay.Size = UDim2.fromScale(1, 1)
@@ -296,7 +315,6 @@ speedTitle.TextSize = 13
 speedTitle.TextXAlignment = Enum.TextXAlignment.Left
 speedTitle.Text = "Speed Settings"
 
--- Make main frame draggable from its top speed title header area
 makeDraggable(mainFrame, speedTitle)
 
 local minimizeBtn = Instance.new("TextButton", mainFrame)
@@ -316,7 +334,6 @@ sliderContainer.Size = UDim2.fromOffset(230, 90)
 sliderContainer.Position = UDim2.fromOffset(10, 38)
 sliderContainer.BackgroundTransparency = 1
 
--- Controls inside Main Frame
 local box = mk(mainFrame, "TextBox", 138, 32)
 box.PlaceholderText = "Animation ID"
 box.Text = ""
@@ -475,7 +492,15 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     label.Font = Enum.Font.SourceSansBold
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = labelText .. ": " .. tostring(defaultVal)
+    
+    local function formatLabelText(val)
+        if labelText == "Animation Speed" and val == 1.0 then
+            return labelText .. ": Default"
+        end
+        return labelText .. ": " .. tostring(val)
+    end
+    
+    label.Text = formatLabelText(defaultVal)
     
     label.MouseButton1Click:Connect(function()
         openSpeedModal(labelText)
@@ -552,7 +577,7 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
         currentValHolder = val
         local ratio = (val - currentMin) / (currentMax - currentMin)
         fill.Size = UDim2.new(ratio, 0, 1, 0)
-        label.Text = labelText .. ": " .. tostring(val)
+        label.Text = formatLabelText(val)
         callback(val, isReset)
         
         if isPrecisionActive and precisionOverlay.Visible then
@@ -672,9 +697,11 @@ end)
 
 createSlider(0, "WalkSpeed", 16, function(val, isReset)
     currentWalkSpeed = val
+    isWalkSpeedActive = true
     if humanoid and humanoid.Parent then
         pcall(function()
             if isReset then
+                isWalkSpeedActive = false
                 if not isGameAntiCheatActive then
                     humanoid.WalkSpeed = originalWalkSpeed
                 end
@@ -697,7 +724,6 @@ end, function() return minAnimSpeedLimit end, function() return maxAnimSpeedLimi
 -- Controls inside Custom Saves Panel
 local btnOpenModal = mk(savesFrame, "TextButton", 20, 16, "Add Custom Animation")
 
--- Section 1: Overrides Label & Scrolling Frame
 local overridesLabel = Instance.new("TextLabel", savesFrame)
 overridesLabel.Size = UDim2.fromOffset(230, 18)
 overridesLabel.Position = UDim2.fromOffset(10, 48)
@@ -708,7 +734,6 @@ overridesLabel.TextSize = 12
 overridesLabel.TextXAlignment = Enum.TextXAlignment.Left
 overridesLabel.Text = "Overrides / Loops:"
 
--- Make custom saves panel draggable from its top overrides label area
 makeDraggable(savesFrame, overridesLabel)
 
 local scrollOverrides = Instance.new("ScrollingFrame", savesFrame)
@@ -720,7 +745,6 @@ scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, 0)
 local soCorner = Instance.new("UICorner", scrollOverrides)
 soCorner.CornerRadius = UDim.new(0, 6)
 
--- Section 2: Poses/Dances Label & Scrolling Frame
 local posesLabel = Instance.new("TextLabel", savesFrame)
 posesLabel.Size = UDim2.fromOffset(230, 18)
 posesLabel.Position = UDim2.fromOffset(10, 170)
@@ -740,7 +764,6 @@ scrollPoses.CanvasSize = UDim2.new(0, 0, 0, 0)
 local spCorner = Instance.new("UICorner", scrollPoses)
 spCorner.CornerRadius = UDim.new(0, 6)
 
--- Controls inside Modal Popup Dialog
 local modalTitle = Instance.new("TextLabel", modalFrame)
 modalTitle.Size = UDim2.fromOffset(260, 24)
 modalTitle.Position = UDim2.fromOffset(20, 15)
@@ -772,6 +795,71 @@ local mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "Extra Hip H
 
 local mConfirmBtn = mkModal(modalFrame, "TextButton", 20, 255, 120, 36, "Save")
 local mCancelBtn = mkModal(modalFrame, "TextButton", 160, 255, 120, 36, "Cancel")
+
+-- Delete Confirmation Popup Elements
+local deleteModalTitle = Instance.new("TextLabel", deleteModalFrame)
+deleteModalTitle.Size = UDim2.fromOffset(240, 24)
+deleteModalTitle.Position = UDim2.fromOffset(20, 15)
+deleteModalTitle.BackgroundTransparency = 1
+deleteModalTitle.TextColor3 = Color3.new(1, 1, 1)
+deleteModalTitle.Font = Enum.Font.SourceSansBold
+deleteModalTitle.TextSize = 16
+deleteModalTitle.Text = "Confirm Deletion"
+deleteModalTitle.ZIndex = 42
+
+local deleteModalMsg = Instance.new("TextLabel", deleteModalFrame)
+deleteModalMsg.Size = UDim2.fromOffset(240, 40)
+deleteModalMsg.Position = UDim2.fromOffset(20, 45)
+deleteModalMsg.BackgroundTransparency = 1
+deleteModalMsg.TextColor3 = Color3.fromRGB(200, 200, 200)
+deleteModalMsg.Font = Enum.Font.SourceSans
+deleteModalMsg.TextSize = 13
+deleteModalMsg.TextXAlignment = Enum.TextXAlignment.Left
+deleteModalMsg.TextYAlignment = Enum.TextYAlignment.Top
+deleteModalMsg.TextWrapped = true
+deleteModalMsg.Text = "Are you sure you want to delete this animation?"
+deleteModalMsg.ZIndex = 42
+
+local delConfirmBtn = mkModal(deleteModalFrame, "TextButton", 20, 100, 110, 36, "Delete")
+local delCancelBtn = mkModal(deleteModalFrame, "TextButton", 150, 100, 110, 36, "Cancel")
+delConfirmBtn.ZIndex = 42
+delCancelBtn.ZIndex = 42
+delConfirmBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+
+local pendingDeleteIndex = nil
+
+local function openDeleteModal(index, animName)
+    pendingDeleteIndex = index
+    deleteModalMsg.Text = "Are you sure you want to delete \"" .. animName .. "\"?"
+    deleteModalOverlay.Visible = true
+    deleteModalFrame.Size = UDim2.fromOffset(0, 0)
+    TweenService:Create(deleteModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(280, 160)
+    }):Play()
+end
+
+local function closeDeleteModal()
+    local tween = TweenService:Create(deleteModalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+        Size = UDim2.fromOffset(0, 0)
+    })
+    tween:Play()
+    tween.Completed:Connect(function()
+        deleteModalOverlay.Visible = false
+        pendingDeleteIndex = nil
+    end)
+end
+
+delCancelBtn.MouseButton1Click:Connect(closeDeleteModal)
+
+delConfirmBtn.MouseButton1Click:Connect(function()
+    if pendingDeleteIndex then
+        table.remove(saveData.customSaves, pendingDeleteIndex)
+        saveSavesToFile()
+        refreshSavesUI()
+        say("Deleted custom animation.")
+    end
+    closeDeleteModal()
+end)
 
 mTypeBtn.MouseButton1Click:Connect(function()
     isOverrideMode = not isOverrideMode
@@ -893,10 +981,28 @@ local function startAnimLoop()
         globalLoopConn = RunService.RenderStepped:Connect(function()
             if not animator then return end
             
+            local effectiveMultiplier = currentAnimMultiplier
+            if currentAnimMultiplier == 1.0 then
+                local currentWs = (humanoid and humanoid.WalkSpeed) or currentWalkSpeed
+                local baseWs = (originalWalkSpeed > 0 and originalWalkSpeed) or 16
+                effectiveMultiplier = currentWs / baseWs
+            end
+            
             for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
                 if t ~= tallTrack and t ~= track then
+                    local nameLower = string.lower(t.Name)
+                    local isMovementAnim = string.find(nameLower, "walk") or string.find(nameLower, "run") or string.find(nameLower, "climb") or string.find(nameLower, "swim")
+                    
                     pcall(function()
-                        t:AdjustSpeed(currentAnimMultiplier)
+                        if currentAnimMultiplier == 1.0 then
+                            if isMovementAnim then
+                                t:AdjustSpeed(effectiveMultiplier)
+                            else
+                                t:AdjustSpeed(1.0)
+                            end
+                        else
+                            t:AdjustSpeed(currentAnimMultiplier)
+                        end
                     end)
                 end
             end
@@ -1036,12 +1142,10 @@ local function playOneUsePose(idStr)
     end
 end
 
-local function refreshSavesUI()
-    -- Clear override buttons
+function refreshSavesUI()
     for _, child in ipairs(scrollOverrides:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
     end
-    -- Clear pose buttons
     for _, child in ipairs(scrollPoses:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
     end
@@ -1085,10 +1189,7 @@ local function refreshSavesUI()
             
             saveBtnUI.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                    table.remove(saveData.customSaves, i)
-                    saveSavesToFile()
-                    refreshSavesUI()
-                    say("Deleted custom animation.")
+                    openDeleteModal(i, save.name)
                 end
             end)
         else
@@ -1113,10 +1214,7 @@ local function refreshSavesUI()
             
             saveBtnUI.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                    table.remove(saveData.customSaves, i)
-                    saveSavesToFile()
-                    refreshSavesUI()
-                    say("Deleted custom animation.")
+                    openDeleteModal(i, save.name)
                 end
             end)
         end
@@ -1183,7 +1281,7 @@ local function applyTallPose()
     end
 
     local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://" .. 92807081069528
+    a.AnimationId = "rbxassetid://92807081069528"
     
     local ok, t = pcall(function()
         return animator:LoadAnimation(a)
@@ -1230,14 +1328,20 @@ local function bind(char)
     if not humanoid then return end
     
     originalWalkSpeed = humanoid.WalkSpeed
-    currentWalkSpeed = originalWalkSpeed
-    isWalkSpeedActive = false
+    if not isWalkSpeedActive then
+        currentWalkSpeed = originalWalkSpeed
+    end
+    
     originalHipHeight = humanoid.HipHeight
     isHipHeightActive = false
     currentExtraHipHeight = 0
     
     if updateWalkSpeedSlider then
-        updateWalkSpeedSlider(originalWalkSpeed, true)
+        if isWalkSpeedActive then
+            updateWalkSpeedSlider(currentWalkSpeed, false)
+        else
+            updateWalkSpeedSlider(originalWalkSpeed, true)
+        end
     end
     
     rootPart = char:WaitForChild("HumanoidRootPart", 5)
@@ -1341,7 +1445,6 @@ plr.CharacterAdded:Connect(function(char)
     if tallTrack then pcall(function() tallTrack:Stop() end); tallTrack = nil end
     enabled = false
     tallEnabled = false
-    isWalkSpeedActive = false
     isHipHeightActive = false
     btn.Text = "Play"
     btnTall.Text = "Tall: OFF"
@@ -1349,6 +1452,7 @@ plr.CharacterAdded:Connect(function(char)
     savesFrame.Visible = false
     popupOverlay.Visible = false
     speedModalOverlay.Visible = false
+    deleteModalOverlay.Visible = false
     precisionOverlay.Visible = false
     task.wait(0.5)
     bind(char)

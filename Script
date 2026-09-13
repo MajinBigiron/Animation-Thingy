@@ -198,6 +198,39 @@ screenBtn.BackgroundTransparency = 1
 screenBtn.Text = ""
 screenBtn.ZIndex = 34
 
+-- === Dragging Utility Function ===
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
 local function mk(parent, cls, y, h, text)
     local o = Instance.new(cls, parent)
     o.Size = UDim2.fromOffset(230, h)
@@ -243,6 +276,9 @@ speedTitle.Font = Enum.Font.SourceSansBold
 speedTitle.TextSize = 13
 speedTitle.TextXAlignment = Enum.TextXAlignment.Left
 speedTitle.Text = "Speed Settings"
+
+-- Make main frame draggable from its top speed title header area
+makeDraggable(mainFrame, speedTitle)
 
 local minimizeBtn = Instance.new("TextButton", mainFrame)
 minimizeBtn.Size = UDim2.fromOffset(60, 24)
@@ -652,6 +688,9 @@ overridesLabel.Font = Enum.Font.SourceSansBold
 overridesLabel.TextSize = 12
 overridesLabel.TextXAlignment = Enum.TextXAlignment.Left
 overridesLabel.Text = "Overrides / Loops:"
+
+-- Make custom saves panel draggable from its top overrides label area
+makeDraggable(savesFrame, overridesLabel)
 
 local scrollOverrides = Instance.new("ScrollingFrame", savesFrame)
 scrollOverrides.Size = UDim2.fromOffset(230, 95)
@@ -1125,7 +1164,7 @@ local function applyTallPose()
     end
 
     local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://92807081069528"
+    a.AnimationId = "rbxassetid://" .. 92807081069528
     
     local ok, t = pcall(function()
         return animator:LoadAnimation(a)

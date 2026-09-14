@@ -232,18 +232,45 @@ savesFrame.Visible = false
 local savesCorner = Instance.new("UICorner", savesFrame)
 savesCorner.CornerRadius = UDim.new(0, 8)
 
--- Options Menu Panel (Appears next to top right of main frame)
-local optionsFrame = Instance.new("Frame", gui)
-optionsFrame.Size = UDim2.fromOffset(230, 270)
-optionsFrame.Position = UDim2.new(0, 280, 0.5, -135)
-optionsFrame.BackgroundColor3 = customUiConfig.bgColor
-optionsFrame.BackgroundTransparency = customUiConfig.bgTransparency
-optionsFrame.BorderSizePixel = 0
-optionsFrame.Visible = false
-optionsFrame.ZIndex = 50
+-- Options Popout Modal Overlay & Frame (Center Screen)
+local optionsModalOverlay = Instance.new("Frame", gui)
+optionsModalOverlay.Size = UDim2.fromScale(1, 1)
+optionsModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+optionsModalOverlay.BackgroundTransparency = 0.5
+optionsModalOverlay.Visible = false
+optionsModalOverlay.ZIndex = 50
 
-local optionsCorner = Instance.new("UICorner", optionsFrame)
-optionsCorner.CornerRadius = UDim.new(0, 8)
+local optionsModalFrame = Instance.new("Frame", optionsModalOverlay)
+optionsModalFrame.Size = UDim2.fromOffset(300, 280)
+optionsModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+optionsModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+optionsModalFrame.BorderSizePixel = 0
+optionsModalFrame.ZIndex = 51
+
+local optionsModalCorner = Instance.new("UICorner", optionsModalFrame)
+optionsModalCorner.CornerRadius = UDim.new(0, 10)
+
+-- Color Picker Sub-Popout Modal Overlay & Frame (Center Screen)
+local colorModalOverlay = Instance.new("Frame", gui)
+colorModalOverlay.Size = UDim2.fromScale(1, 1)
+colorModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+colorModalOverlay.BackgroundTransparency = 0.5
+colorModalOverlay.Visible = false
+colorModalOverlay.ZIndex = 70
+
+local colorModalFrame = Instance.new("Frame", colorModalOverlay)
+colorModalFrame.Size = UDim2.fromOffset(320, 290)
+colorModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+colorModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+colorModalFrame.BackgroundColor3 = customUiConfig.bgColor
+colorModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+colorModalFrame.BorderSizePixel = 0
+colorModalFrame.ZIndex = 71
+
+local colorModalCorner = Instance.new("UICorner", colorModalFrame)
+colorModalCorner.CornerRadius = UDim.new(0, 10)
 
 -- Smooth Pop-In/Pop-Out Modal Popup (Center Screen)
 local popupOverlay = Instance.new("Frame", gui)
@@ -484,53 +511,28 @@ table.insert(managedTextObjects, optionsBtn)
 local optCorner = Instance.new("UICorner", optionsBtn)
 optCorner.CornerRadius = UDim.new(0, 4)
 
--- === Options Menu Layout ===
-local optTitle = Instance.new("TextLabel", optionsFrame)
-optTitle.Size = UDim2.fromOffset(210, 24)
-optTitle.Position = UDim2.fromOffset(10, 10)
+-- === Options Menu Popout Layout ===
+local optTitle = Instance.new("TextLabel", optionsModalFrame)
+optTitle.Size = UDim2.fromOffset(260, 24)
+optTitle.Position = UDim2.fromOffset(20, 15)
 optTitle.BackgroundTransparency = 1
-optTitle.TextColor3 = Color3.fromRGB(255, 200, 60)
+optTitle.TextColor3 = Color3.new(1, 1, 1)
 optTitle.Font = Enum.Font.SourceSansBold
-optTitle.TextSize = 15
-optTitle.ZIndex = 51
+optTitle.TextSize = 16
+optTitle.ZIndex = 52
 optTitle.Text = "UI Options Menu"
 
--- Helper for options sliders/inputs
-local function createOptInput(yPos, labelText, defaultVal, callback)
-    local lbl = Instance.new("TextLabel", optionsFrame)
-    lbl.Size = UDim2.fromOffset(120, 20)
-    lbl.Position = UDim2.fromOffset(10, yPos)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = Color3.new(1, 1, 1)
-    lbl.Font = Enum.Font.SourceSansSemibold
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 51
-    lbl.Text = labelText
-
-    local box = Instance.new("TextBox", optionsFrame)
-    box.Size = UDim2.fromOffset(80, 22)
-    box.Position = UDim2.fromOffset(140, yPos)
-    box.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    box.TextColor3 = Color3.new(1, 1, 1)
-    box.Font = Enum.Font.SourceSansSemibold
-    box.TextSize = 12
-    box.Text = tostring(defaultVal)
-    box.ClearTextOnFocus = false
-    box.ZIndex = 51
-    local c = Instance.new("UICorner", box)
-    c.CornerRadius = UDim.new(0, 4)
-
-    box.FocusLost:Connect(function()
-        local val = tonumber(box.Text)
-        if val then
-            callback(val)
-        else
-            box.Text = tostring(defaultVal)
-        end
-    end)
-    return box
-end
+local optCloseBtn = Instance.new("TextButton", optionsModalFrame)
+optCloseBtn.Size = UDim2.fromOffset(260, 36)
+optCloseBtn.Position = UDim2.fromOffset(20, 225)
+optCloseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+optCloseBtn.TextColor3 = Color3.new(1, 1, 1)
+optCloseBtn.Font = Enum.Font.SourceSansSemibold
+optCloseBtn.TextSize = 14
+optCloseBtn.ZIndex = 52
+optCloseBtn.Text = "Close"
+local ocCorner = Instance.new("UICorner", optCloseBtn)
+ocCorner.CornerRadius = UDim.new(0, 6)
 
 -- Refresh UI Theme and Scale dynamically
 local function updateUiThemeAndScale()
@@ -538,8 +540,10 @@ local function updateUiThemeAndScale()
     mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
     savesFrame.BackgroundColor3 = customUiConfig.bgColor
     savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    optionsFrame.BackgroundColor3 = customUiConfig.bgColor
-    optionsFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    colorModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    colorModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
     modalFrame.BackgroundColor3 = customUiConfig.bgColor
     modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
     deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
@@ -559,61 +563,237 @@ local function updateUiThemeAndScale()
     end
 end
 
-createOptInput(42, "GUI Height", customUiConfig.height, function(val)
-    customUiConfig.height = math.clamp(val, 250, 600)
+-- Helper to create option sliders in the options popup
+local function createOptionSlider(yPos, labelText, minVal, maxVal, currentVal, callback)
+    local lbl = Instance.new("TextLabel", optionsModalFrame)
+    lbl.Size = UDim2.fromOffset(260, 16)
+    lbl.Position = UDim2.fromOffset(20, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.new(1, 1, 1)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 52
+    lbl.Text = labelText .. ": " .. tostring(currentVal)
+
+    local bar = Instance.new("Frame", optionsModalFrame)
+    bar.Size = UDim2.fromOffset(260, 10)
+    bar.Position = UDim2.fromOffset(20, yPos + 18)
+    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 52
+    local bc = Instance.new("UICorner", bar)
+    bc.CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame", bar)
+    local initialRatio = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
+    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 53
+    local fc = Instance.new("UICorner", fill)
+    fc.CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton", bar)
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 54
+
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouseX = UserInputService:GetMouseLocation().X
+            local barPos = bar.AbsolutePosition.X
+            local barSize = bar.AbsoluteSize.X
+            local ratio = math.clamp((mouseX - barPos) / barSize, 0, 1)
+            local val = minVal + ratio * (maxVal - minVal)
+            if maxVal > 10 then val = math.round(val) else val = math.floor(val * 100 + 0.5) / 100 end
+            fill.Size = UDim2.new(ratio, 0, 1, 0)
+            lbl.Text = labelText .. ": " .. tostring(val)
+            callback(val)
+        end
+    end)
+end
+
+createOptionSlider(50, "GUI Height", 250, 600, customUiConfig.height, function(v)
+    customUiConfig.height = v
     updateUiThemeAndScale()
     saveSavesToFile()
 end)
 
-createOptInput(72, "Text Size", customUiConfig.textSize, function(val)
-    customUiConfig.textSize = math.clamp(val, 10, 24)
+createOptionSlider(95, "Text Size", 10, 24, customUiConfig.textSize, function(v)
+    customUiConfig.textSize = v
     updateUiThemeAndScale()
     saveSavesToFile()
 end)
 
-createOptInput(102, "BG Transparency", customUiConfig.bgTransparency, function(val)
-    customUiConfig.bgTransparency = math.clamp(val, 0, 0.95)
+createOptionSlider(140, "Transparency", 0, 0.95, customUiConfig.bgTransparency, function(v)
+    customUiConfig.bgTransparency = v
     updateUiThemeAndScale()
     saveSavesToFile()
 end)
 
-local colLbl = Instance.new("TextLabel", optionsFrame)
-colLbl.Size = UDim2.fromOffset(210, 20)
-colLbl.Position = UDim2.fromOffset(10, 134)
-colLbl.BackgroundTransparency = 1
-colLbl.TextColor3 = Color3.new(1, 1, 1)
-colLbl.Font = Enum.Font.SourceSansSemibold
-colLbl.TextSize = 12
-colLbl.TextXAlignment = Enum.TextXAlignment.Left
-colLbl.ZIndex = 51
-colLbl.Text = "BG Color RGB (0-255):"
+local colorPickerBtn = Instance.new("TextButton", optionsModalFrame)
+colorPickerBtn.Size = UDim2.fromOffset(260, 30)
+colorPickerBtn.Position = UDim2.fromOffset(20, 185)
+colorPickerBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+colorPickerBtn.TextColor3 = Color3.new(1, 1, 1)
+colorPickerBtn.Font = Enum.Font.SourceSansSemibold
+colorPickerBtn.TextSize = 13
+colorPickerBtn.ZIndex = 52
+colorPickerBtn.Text = "Customize Background Color..."
+local cpCorner = Instance.new("UICorner", colorPickerBtn)
+cpCorner.CornerRadius = UDim.new(0, 6)
 
-local rBox = createOptInput(160, "Red", math.floor(customUiConfig.bgColor.R * 255 + 0.5), function(v)
+-- === Color Picker Sub-Popout Layout ===
+local cpTitle = Instance.new("TextLabel", colorModalFrame)
+cpTitle.Size = UDim2.fromOffset(280, 24)
+cpTitle.Position = UDim2.fromOffset(20, 15)
+cpTitle.BackgroundTransparency = 1
+cpTitle.TextColor3 = Color3.new(1, 1, 1)
+cpTitle.Font = Enum.Font.SourceSansBold
+cpTitle.TextSize = 16
+cpTitle.ZIndex = 72
+cpTitle.Text = "A Most Excellent Color Picker"
+
+local colorPreviewBox = Instance.new("Frame", colorModalFrame)
+colorPreviewBox.Size = UDim2.fromOffset(60, 60)
+colorPreviewBox.Position = UDim2.fromOffset(20, 50)
+colorPreviewBox.BackgroundColor3 = customUiConfig.bgColor
+colorPreviewBox.BorderSizePixel = 0
+colorPreviewBox.ZIndex = 72
+local cpbCorner = Instance.new("UICorner", colorPreviewBox)
+cpbCorner.CornerRadius = UDim.new(0, 8)
+
+local hexLabel = Instance.new("TextLabel", colorModalFrame)
+hexLabel.Size = UDim2.fromOffset(200, 30)
+hexLabel.Position = UDim2.fromOffset(90, 65)
+hexLabel.BackgroundTransparency = 1
+hexLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+hexLabel.Font = Enum.Font.SourceSansBold
+hexLabel.TextSize = 14
+hexLabel.TextXAlignment = Enum.TextXAlignment.Left
+hexLabel.ZIndex = 72
+hexLabel.Text = "#191919"
+
+local function createColorSlider(yPos, labelText, currentVal, callback)
+    local lbl = Instance.new("TextLabel", colorModalFrame)
+    lbl.Size = UDim2.fromOffset(280, 16)
+    lbl.Position = UDim2.fromOffset(20, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.new(1, 1, 1)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 72
+    lbl.Text = labelText .. ": " .. tostring(currentVal)
+
+    local bar = Instance.new("Frame", colorModalFrame)
+    bar.Size = UDim2.fromOffset(280, 12)
+    bar.Position = UDim2.fromOffset(20, yPos + 18)
+    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 72
+    local bc = Instance.new("UICorner", bar)
+    bc.CornerRadius = UDim.new(1, 0)
+
+    local fill = Instance.new("Frame", bar)
+    local initialRatio = math.clamp(currentVal / 255, 0, 1)
+    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(255, 100, 200)
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 73
+    local fc = Instance.new("UICorner", fill)
+    fc.CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton", bar)
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 74
+
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouseX = UserInputService:GetMouseLocation().X
+            local barPos = bar.AbsolutePosition.X
+            local barSize = bar.AbsoluteSize.X
+            local ratio = math.clamp((mouseX - barPos) / barSize, 0, 1)
+            local val = math.round(ratio * 255)
+            fill.Size = UDim2.new(ratio, 0, 1, 0)
+            lbl.Text = labelText .. ": " .. tostring(val)
+            callback(val)
+        end
+    end)
+end
+
+local function updateColorPreviewAndTheme()
+    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
     local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
     local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(math.clamp(v, 0, 255), g, b)
+    colorPreviewBox.BackgroundColor3 = customUiConfig.bgColor
+    hexLabel.Text = string.format("#%02x%02x%02x", r, g, b)
     updateUiThemeAndScale()
     saveSavesToFile()
+end
+
+createColorSlider(120, "Red", math.floor(customUiConfig.bgColor.R * 255 + 0.5), function(v)
+    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
+    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
+    customUiConfig.bgColor = Color3.fromRGB(v, g, b)
+    updateColorPreviewAndTheme()
 end)
 
-local gBox = createOptInput(190, "Green", math.floor(customUiConfig.bgColor.G * 255 + 0.5), function(v)
+createColorSlider(165, "Green", math.floor(customUiConfig.bgColor.G * 255 + 0.5), function(v)
     local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
     local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(r, math.clamp(v, 0, 255), b)
-    updateUiThemeAndScale()
-    saveSavesToFile()
+    customUiConfig.bgColor = Color3.fromRGB(r, v, b)
+    updateColorPreviewAndTheme()
 end)
 
-local bBox = createOptInput(220, "Blue", math.floor(customUiConfig.bgColor.B * 255 + 0.5), function(v)
+createColorSlider(210, "Blue", math.floor(customUiConfig.bgColor.B * 255 + 0.5), function(v)
     local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
     local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(r, g, math.clamp(v, 0, 255))
-    updateUiThemeAndScale()
-    saveSavesToFile()
+    customUiConfig.bgColor = Color3.fromRGB(r, g, v)
+    updateColorPreviewAndTheme()
 end)
+
+local colorCloseBtn = Instance.new("TextButton", colorModalFrame)
+colorCloseBtn.Size = UDim2.fromOffset(280, 30)
+colorCloseBtn.Position = UDim2.fromOffset(20, 250)
+colorCloseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+colorCloseBtn.TextColor3 = Color3.new(1, 1, 1)
+colorCloseBtn.Font = Enum.Font.SourceSansSemibold
+colorCloseBtn.TextSize = 13
+colorCloseBtn.ZIndex = 72
+colorCloseBtn.Text = "Back to Options"
+local ccCorner = Instance.new("UICorner", colorCloseBtn)
+ccCorner.CornerRadius = UDim.new(0, 6)
 
 optionsBtn.MouseButton1Click:Connect(function()
-    optionsFrame.Visible = not optionsFrame.Visible
+    optionsModalOverlay.Visible = true
+end)
+
+optCloseBtn.MouseButton1Click:Connect(function()
+    optionsModalOverlay.Visible = false
+end)
+
+colorPickerBtn.MouseButton1Click:Connect(function()
+    updateColorPreviewAndTheme()
+    colorModalOverlay.Visible = true
+end)
+
+colorCloseBtn.MouseButton1Click:Connect(function()
+    colorModalOverlay.Visible = false
 end)
 
 local sliderContainer = Instance.new("Frame", mainFrame)
@@ -2068,7 +2248,8 @@ plr.CharacterAdded:Connect(function(char)
     btnToggleSaves.Text = "Custom Saves: OFF"
     box.Text = ""
     savesFrame.Visible = false
-    optionsFrame.Visible = false
+    optionsModalOverlay.Visible = false
+    colorModalOverlay.Visible = false
     popupOverlay.Visible = false
     speedModalOverlay.Visible = false
     deleteModalOverlay.Visible = false

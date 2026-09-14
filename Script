@@ -49,24 +49,49 @@ local saveData = {
     minAnimSpeedLimit = 0.1
 }
 
+local function normaliseLimits()
+    minWalkSpeedLimit = math.max(0, tonumber(minWalkSpeedLimit) or 1)
+    maxWalkSpeedLimit = math.max(minWalkSpeedLimit, tonumber(maxWalkSpeedLimit) or 100)
+
+    minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, tonumber(minAnimSpeedLimit) or 0.1)
+    maxAnimSpeedLimit = math.max(minAnimSpeedLimit, tonumber(maxAnimSpeedLimit) or MAX_ANIM_SPEED)
+end
+
 local function loadSavesFromFile()
     pcall(function()
         if readfile and isfile and isfile(SAVE_FILE_NAME) then
             local content = readfile(SAVE_FILE_NAME)
             local decoded = HttpService:JSONDecode(content)
-            if type(decoded) == "table" then
-                if decoded.customSaves then
-                    saveData.customSaves = decoded.customSaves
-                else
-                    saveData.customSaves = decoded
-                end
-                if decoded.maxWalkSpeedLimit then maxWalkSpeedLimit = decoded.maxWalkSpeedLimit end
-                if decoded.minWalkSpeedLimit then minWalkSpeedLimit = decoded.minWalkSpeedLimit end
-                if decoded.maxAnimSpeedLimit then maxAnimSpeedLimit = decoded.maxAnimSpeedLimit end
-                if decoded.minAnimSpeedLimit then minAnimSpeedLimit = decoded.minAnimSpeedLimit end
+
+            if type(decoded) ~= "table" then
+                return
+            end
+
+            if type(decoded.customSaves) == "table" then
+                saveData.customSaves = decoded.customSaves
+            else
+                saveData.customSaves = decoded
+            end
+
+            if decoded.maxWalkSpeedLimit ~= nil then
+                maxWalkSpeedLimit = tonumber(decoded.maxWalkSpeedLimit) or maxWalkSpeedLimit
+            end
+
+            if decoded.minWalkSpeedLimit ~= nil then
+                minWalkSpeedLimit = tonumber(decoded.minWalkSpeedLimit) or minWalkSpeedLimit
+            end
+
+            if decoded.maxAnimSpeedLimit ~= nil then
+                maxAnimSpeedLimit = tonumber(decoded.maxAnimSpeedLimit) or maxAnimSpeedLimit
+            end
+
+            if decoded.minAnimSpeedLimit ~= nil then
+                minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit
             end
         end
     end)
+
+    normaliseLimits()
 end
 
 local function saveSavesToFile()
@@ -98,25 +123,25 @@ introOverlay.BorderSizePixel = 0
 introOverlay.ZIndex = 100
 
 local introContainer = Instance.new("Frame", introOverlay)
-introContainer.Size = UDim2.fromOffset(300, 100)
+introContainer.Size = UDim2.fromOffset(350, 120)
 introContainer.AnchorPoint = Vector2.new(0.5, 0.5)
 introContainer.Position = UDim2.fromScale(0.5, 0.5)
 introContainer.BackgroundTransparency = 1
 introContainer.ZIndex = 101
 
 local introTitle = Instance.new("TextLabel", introContainer)
-introTitle.Size = UDim2.new(1, 0, 0, 50)
+introTitle.Size = UDim2.new(1, 0, 0, 60)
 introTitle.Position = UDim2.fromScale(0, 0)
 introTitle.BackgroundTransparency = 1
 introTitle.TextColor3 = Color3.new(1, 1, 1)
 introTitle.Font = Enum.Font.SourceSansBold
-introTitle.TextSize = 32
+introTitle.TextSize = 40
 introTitle.Text = "AnimOverride"
 introTitle.ZIndex = 101
 
 local introSubtitle = Instance.new("TextLabel", introContainer)
 introSubtitle.Size = UDim2.new(1, 0, 0, 30)
-introSubtitle.Position = UDim2.fromOffset(0, 50)
+introSubtitle.Position = UDim2.fromOffset(0, 65)
 introSubtitle.BackgroundTransparency = 1
 introSubtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
 introSubtitle.Font = Enum.Font.SourceSansSemibold
@@ -124,8 +149,8 @@ introSubtitle.TextSize = 18
 introSubtitle.Text = "by Suta Burger"
 introSubtitle.ZIndex = 101
 
--- Fade out intro after 1 second delay
-task.delay(1, function()
+-- Stay for 3 seconds, then fade out over 1.5 seconds
+task.delay(3, function()
     local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     TweenService:Create(introOverlay, tweenInfo, {BackgroundTransparency = 1}):Play()
     TweenService:Create(introTitle, tweenInfo, {TextTransparency = 1}):Play()
@@ -510,27 +535,70 @@ end
 
 smCancelBtn.MouseButton1Click:Connect(closeSpeedModal)
 
+local function updateLimitPair(minValue, maxValue, currentMin, currentMax, minimumAllowed)
+    local newMin = tonumber(minValue)
+    local newMax = tonumber(maxValue)
+
+    if newMin == nil then
+        newMin = currentMin
+    end
+
+    if newMax == nil then
+        newMax = currentMax
+    end
+
+    newMin = math.max(minimumAllowed, newMin)
+    newMax = math.max(newMin, newMax)
+
+    return newMin, newMax
+end
+
 smConfirmBtn.MouseButton1Click:Connect(function()
     local val = tonumber(smValBox.Text)
-    local minLimit = tonumber(smMinBox.Text)
-    local maxLimit = tonumber(smMaxBox.Text)
-    
+
     if activeEditingType == "WalkSpeed" then
-        if minLimit and minLimit >= 0 then minWalkSpeedLimit = minLimit end
-        if maxLimit and maxLimit > 0 then maxWalkSpeedLimit = maxLimit end
-        if val then
+        minWalkSpeedLimit, maxWalkSpeedLimit = updateLimitPair(
+            smMinBox.Text,
+            smMaxBox.Text,
+            minWalkSpeedLimit,
+            maxWalkSpeedLimit,
+            0
+        )
+
+        if val ~= nil then
             isWalkSpeedActive = true
-            currentWalkSpeed = math.clamp(val, minWalkSpeedLimit, maxWalkSpeedLimit)
-            if updateWalkSpeedSlider then updateWalkSpeedSlider(currentWalkSpeed) end
+            currentWalkSpeed = math.clamp(
+                val,
+                minWalkSpeedLimit,
+                maxWalkSpeedLimit
+            )
+
+            if updateWalkSpeedSlider then
+                updateWalkSpeedSlider(currentWalkSpeed, false)
+            end
         end
     else
-        if minLimit and minLimit >= 0 then minAnimSpeedLimit = minLimit end
-        if maxLimit and maxLimit > 0 then maxAnimSpeedLimit = maxLimit end
-        if val then
-            currentAnimMultiplier = math.clamp(val, minAnimSpeedLimit, maxAnimSpeedLimit)
-            if updateAnimSpeedSlider then updateAnimSpeedSlider(currentAnimMultiplier) end
+        minAnimSpeedLimit, maxAnimSpeedLimit = updateLimitPair(
+            smMinBox.Text,
+            smMaxBox.Text,
+            minAnimSpeedLimit,
+            maxAnimSpeedLimit,
+            MIN_ANIM_SPEED
+        )
+
+        if val ~= nil then
+            currentAnimMultiplier = math.clamp(
+                val,
+                minAnimSpeedLimit,
+                maxAnimSpeedLimit
+            )
+
+            if updateAnimSpeedSlider then
+                updateAnimSpeedSlider(currentAnimMultiplier, false)
+            end
         end
     end
+
     saveSavesToFile()
     closeSpeedModal()
 end)
@@ -539,8 +607,16 @@ local activePrecisionCallback = nil
 local activePrecisionMaxGetter = nil
 local activePrecisionMinGetter = nil
 
-local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, getMaxLimit)
-    local label = Instance.new("TextButton", sliderContainer)
+local function createSlider(
+    yPos,
+    labelText,
+    defaultVal,
+    callback,
+    getMinLimit,
+    getMaxLimit
+)
+    local label = Instance.new("TextButton")
+    label.Name = labelText .. "Label"
     label.Size = UDim2.fromOffset(170, 18)
     label.Position = UDim2.fromOffset(0, yPos)
     label.BackgroundTransparency = 1
@@ -548,23 +624,34 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     label.Font = Enum.Font.SourceSansBold
     label.TextSize = 13
     label.TextXAlignment = Enum.TextXAlignment.Left
-    
-    local function formatLabelText(val, isResetState)
-        if labelText == "Animation Speed" and (val == 1.0 and isResetState) then
-            return labelText .. ": Default"
-        elseif labelText == "WalkSpeed" and (not isWalkSpeedActive or isResetState) then
+    label.Parent = sliderContainer
+
+    local function formatLabelText(value, isResetState)
+        if labelText == "Animation Speed"
+            and value == 1
+            and isResetState then
             return labelText .. ": Default"
         end
-        return labelText .. ": " .. tostring(val)
+
+        if labelText == "WalkSpeed"
+            and (not isWalkSpeedActive or isResetState) then
+            return labelText .. ": Default"
+        end
+
+        return labelText .. ": " .. tostring(value)
     end
-    
-    label.Text = formatLabelText(defaultVal, labelText == "WalkSpeed" or labelText == "Animation Speed")
-    
+
+    label.Text = formatLabelText(
+        defaultVal,
+        labelText == "WalkSpeed" or labelText == "Animation Speed"
+    )
+
     label.MouseButton1Click:Connect(function()
         openSpeedModal(labelText)
     end)
-    
-    local resetBtn = Instance.new("TextButton", sliderContainer)
+
+    local resetBtn = Instance.new("TextButton")
+    resetBtn.Name = labelText .. "Reset"
     resetBtn.Size = UDim2.fromOffset(50, 18)
     resetBtn.Position = UDim2.fromOffset(180, yPos)
     resetBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
@@ -572,34 +659,43 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     resetBtn.Font = Enum.Font.SourceSansSemibold
     resetBtn.TextSize = 11
     resetBtn.Text = "Reset"
-    local rc = Instance.new("UICorner", resetBtn)
-    rc.CornerRadius = UDim.new(0, 4)
-    
-    local bar = Instance.new("Frame", sliderContainer)
+    resetBtn.Parent = sliderContainer
+
+    local resetCorner = Instance.new("UICorner")
+    resetCorner.CornerRadius = UDim.new(0, 4)
+    resetCorner.Parent = resetBtn
+
+    local bar = Instance.new("Frame")
+    bar.Name = labelText .. "Bar"
     bar.Size = UDim2.fromOffset(230, 8)
     bar.Position = UDim2.fromOffset(0, yPos + 22)
     bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     bar.BorderSizePixel = 0
-    local bc = Instance.new("UICorner", bar)
-    bc.CornerRadius = UDim.new(1, 0)
-    
-    local fill = Instance.new("Frame", bar)
-    local initialMin = getMinLimit()
-    local initialMax = getMaxLimit()
-    local initialRange = math.max(initialMax - initialMin, 0.001)
-    local initialRatio = math.clamp((defaultVal - initialMin) / initialRange, 0, 1)
-    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
+    bar.Parent = sliderContainer
+
+    local barCorner = Instance.new("UICorner")
+    barCorner.CornerRadius = UDim.new(1, 0)
+    barCorner.Parent = bar
+
+    local fill = Instance.new("Frame")
+    fill.Name = "Fill"
     fill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
     fill.BorderSizePixel = 0
-    local fc = Instance.new("UICorner", fill)
-    fc.CornerRadius = UDim.new(1, 0)
-    
-    local btn = Instance.new("TextButton", bar)
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    
-    local holdTimer = nil
+    fill.Parent = bar
+
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(1, 0)
+    fillCorner.Parent = fill
+
+    local sliderButton = Instance.new("TextButton")
+    sliderButton.Name = "SliderButton"
+    sliderButton.Size = UDim2.fromScale(1, 1)
+    sliderButton.BackgroundTransparency = 1
+    sliderButton.Text = ""
+    sliderButton.AutoButtonColor = false
+    sliderButton.Parent = bar
+
+    local holdTimer
     local currentValHolder = defaultVal
     local isPrecisionActive = false
     local localDragging = false
@@ -607,163 +703,245 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     local wasPreviouslyMinimized = false
     local isHovered = false
 
-    btn.MouseEnter:Connect(function()
-        isHovered = true
-    end)
-    
-    btn.MouseLeave:Connect(function()
-        isHovered = false
-    end)
+    -- Forward declaration is required because the input handlers are
+    -- connected before the function body is assigned.
+    local updateValue
 
-    UserInputService.InputBegan:Connect(function(input)
-        if isHovered and input.UserInputType == Enum.UserInputType.MouseWheel then
-            local step = 1
-            local newVal = currentValHolder + (input.Position.Z > 0 and step or -step)
-            if labelText == "WalkSpeed" then
-                isWalkSpeedActive = true
-            end
-            updateValue(newVal, false)
-        end
-    end)
-    
     local function cancelHold()
         if holdTimer then
             task.cancel(holdTimer)
             holdTimer = nil
         end
     end
-    
-    local function updateValue(val, isReset)
-        local currentMin = getMinLimit()
-        local currentMax = getMaxLimit()
-        val = math.clamp(val, currentMin, currentMax)
-        
-        if currentMax > 100 and not isPrecisionActive then
-            val = math.round(val)
-        else
-            if not isPrecisionActive then
-                if currentMax <= 10 then
-                    val = math.floor(val * 100 + 0.5) / 100
-                else
-                    val = math.floor(val * 10 + 0.5) / 10
-                end
+
+    updateValue = function(value, isReset)
+        local currentMin = tonumber(getMinLimit()) or 0
+        local currentMax = tonumber(getMaxLimit()) or currentMin
+
+        -- Always keep math.clamp valid.
+        currentMax = math.max(currentMin, currentMax)
+
+        value = tonumber(value) or currentValHolder
+        value = math.clamp(value, currentMin, currentMax)
+
+        if not isPrecisionActive then
+            if currentMax > 100 then
+                value = math.round(value)
+            elseif currentMax <= 10 then
+                value = math.floor(value * 100 + 0.5) / 100
             else
-                if currentMax > 10 then 
-                    val = math.floor(val * 10) / 10 
-                else 
-                    val = math.floor(val * 100) / 100 
-                end
+                value = math.floor(value * 10 + 0.5) / 10
             end
+        elseif currentMax > 10 then
+            value = math.floor(value * 10) / 10
+        else
+            value = math.floor(value * 100) / 100
         end
-        
-        currentValHolder = val
+
+        value = math.clamp(value, currentMin, currentMax)
+        currentValHolder = value
+
         local range = math.max(currentMax - currentMin, 0.001)
-        local ratio = math.clamp((val - currentMin) / range, 0, 1)
+        local ratio = math.clamp(
+            (value - currentMin) / range,
+            0,
+            1
+        )
+
         fill.Size = UDim2.new(ratio, 0, 1, 0)
-        label.Text = formatLabelText(val, isReset)
-        callback(val, isReset)
-        
+        label.Text = formatLabelText(value, isReset)
+
+        callback(value, isReset)
+
         if isPrecisionActive and precisionOverlay.Visible then
-            precisionTitle.Text = labelText .. " (Precision): " .. string.format("%.2f", val)
+            precisionTitle.Text = string.format(
+                "%s (Precision): %.2f",
+                labelText,
+                value
+            )
+
             screenFill.Size = UDim2.new(ratio, 0, 1, 0)
         end
     end
-    
+
+    -- Register the external slider update functions.
     if labelText == "WalkSpeed" then
-        updateWalkSpeedSlider = function(newDefault, isReset)
-            updateValue(newDefault, isReset)
+        updateWalkSpeedSlider = function(newValue, isReset)
+            updateValue(newValue, isReset == true)
         end
     elseif labelText == "Animation Speed" then
-        updateAnimSpeedSlider = function(newDefault, isReset)
-            updateValue(newDefault, isReset)
+        updateAnimSpeedSlider = function(newValue, isReset)
+            updateValue(newValue, isReset == true)
         end
     end
-    
+
+    -- Hovering anywhere over the slider bar enables mouse-wheel control.
+    bar.MouseEnter:Connect(function()
+        isHovered = true
+    end)
+
+    bar.MouseLeave:Connect(function()
+        isHovered = false
+    end)
+
+    -- MouseWheel is reported through InputChanged.
+    UserInputService.InputChanged:Connect(function(input)
+        if not isHovered then
+            return
+        end
+
+        if input.UserInputType ~= Enum.UserInputType.MouseWheel then
+            return
+        end
+
+        local wheelDelta = input.Position.Z
+
+        if wheelDelta == 0 then
+            return
+        end
+
+        -- One wheel notch changes the value by exactly one.
+        local newValue = currentValHolder + (wheelDelta > 0 and 1 or -1)
+
+        if labelText == "WalkSpeed" then
+            isWalkSpeedActive = true
+        end
+
+        updateValue(newValue, false)
+    end)
+
     resetBtn.MouseButton1Click:Connect(function()
         cancelHold()
+
         if isPrecisionActive then
             isPrecisionActive = false
             precisionOverlay.Visible = false
+
             if not wasPreviouslyMinimized then
                 setSpeedMinimized(false)
             end
         end
+
         if labelText == "WalkSpeed" then
             isWalkSpeedActive = false
             currentWalkSpeed = originalWalkSpeed
             updateValue(originalWalkSpeed, true)
         else
-            currentAnimMultiplier = 1.0
-            updateValue(1.0, true)
+            currentAnimMultiplier = 1
+            updateValue(1, true)
         end
     end)
-    
-    btn.MouseButton1Down:Connect(function() 
+
+    sliderButton.MouseButton1Down:Connect(function()
         localDragging = true
         cancelHold()
+
         pressPos = UserInputService:GetMouseLocation()
-        
-        holdTimer = task.delay(1.0, function()
-            if localDragging then
-                local currentPos = UserInputService:GetMouseLocation()
-                if (currentPos - pressPos).Magnitude < 5 then
-                    isPrecisionActive = true
-                    activePrecisionCallback = updateValue
-                    activePrecisionMaxGetter = getMaxLimit
-                    activePrecisionMinGetter = getMinLimit
-                    
-                    wasPreviouslyMinimized = isSpeedMinimized
-                    if not isSpeedMinimized then
-                        setSpeedMinimized(true)
-                    end
-                    
-                    precisionTitle.Text = labelText .. " (Precision): " .. string.format("%.2f", currentValHolder)
-                    local precisionMin = getMinLimit()
-                    local precisionMax = getMaxLimit()
-                    local precisionRange = math.max(precisionMax - precisionMin, 0.001)
-                    local ratio = math.clamp((currentValHolder - precisionMin) / precisionRange, 0, 1)
-                    screenFill.Size = UDim2.new(ratio, 0, 1, 0)
-                    precisionOverlay.Visible = true
+
+        holdTimer = task.delay(1, function()
+            if not localDragging then
+                return
+            end
+
+            local currentPos = UserInputService:GetMouseLocation()
+
+            if (currentPos - pressPos).Magnitude < 5 then
+                isPrecisionActive = true
+                activePrecisionCallback = updateValue
+                activePrecisionMaxGetter = getMaxLimit
+                activePrecisionMinGetter = getMinLimit
+
+                wasPreviouslyMinimized = isSpeedMinimized
+
+                if not isSpeedMinimized then
+                    setSpeedMinimized(true)
                 end
+
+                precisionTitle.Text = string.format(
+                    "%s (Precision): %.2f",
+                    labelText,
+                    currentValHolder
+                )
+
+                local precisionMin = getMinLimit()
+                local precisionMax = getMaxLimit()
+                local precisionRange = math.max(
+                    precisionMax - precisionMin,
+                    0.001
+                )
+
+                local ratio = math.clamp(
+                    (currentValHolder - precisionMin) / precisionRange,
+                    0,
+                    1
+                )
+
+                screenFill.Size = UDim2.new(ratio, 0, 1, 0)
+                precisionOverlay.Visible = true
             end
         end)
     end)
-    
+
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then 
-            localDragging = false
-            cancelHold()
-            if isPrecisionActive then
-                isPrecisionActive = false
-                precisionOverlay.Visible = false
-                if not wasPreviouslyMinimized then
-                    setSpeedMinimized(false)
-                end
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+            return
+        end
+
+        localDragging = false
+        cancelHold()
+
+        if isPrecisionActive then
+            isPrecisionActive = false
+            precisionOverlay.Visible = false
+
+            if not wasPreviouslyMinimized then
+                setSpeedMinimized(false)
             end
         end
     end)
-    
+
     UserInputService.InputChanged:Connect(function(input)
-        if localDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local currentPos = UserInputService:GetMouseLocation()
-            if not isPrecisionActive and (currentPos - pressPos).Magnitude > 5 then
-                cancelHold()
-            end
-            
-            if not isPrecisionActive then
-                local mousePos = currentPos.X
-                local barPos = bar.AbsolutePosition.X
-                local barSize = bar.AbsoluteSize.X
-                local ratio = math.clamp((mousePos - barPos) / barSize, 0, 1)
-                local currentMin = getMinLimit()
-                local currentMax = getMaxLimit()
-                local val = currentMin + ratio * (currentMax - currentMin)
-                if labelText == "WalkSpeed" then
-                    isWalkSpeedActive = true
-                end
-                updateValue(val, false)
-            end
+        if not localDragging then
+            return
         end
+
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+            return
+        end
+
+        local currentPos = UserInputService:GetMouseLocation()
+
+        if not isPrecisionActive
+            and (currentPos - pressPos).Magnitude > 5 then
+            cancelHold()
+        end
+
+        if isPrecisionActive then
+            return
+        end
+
+        local barPosition = bar.AbsolutePosition.X
+        local barWidth = bar.AbsoluteSize.X
+
+        if barWidth <= 0 then
+            return
+        end
+
+        local ratio = math.clamp(
+            (currentPos.X - barPosition) / barWidth,
+            0,
+            1
+        )
+
+        local currentMin = getMinLimit()
+        local currentMax = getMaxLimit()
+        local value = currentMin + ratio * (currentMax - currentMin)
+
+        if labelText == "WalkSpeed" then
+            isWalkSpeedActive = true
+        end
+
+        updateValue(value, false)
     end)
 end
 

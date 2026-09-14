@@ -6,6 +6,7 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 
 local plr = Players.LocalPlayer
+local cam = workspace.CurrentCamera
 local HIGH = Enum.AnimationPriority.Action4
 
 local MIN_ANIM_SPEED = 0.001 
@@ -22,7 +23,7 @@ local maxAnimSpeedLimit = 5.0
 local minAnimSpeedLimit = 0.1
 
 local customUiConfig = {
-    height = 415,
+    height = 455,
     textSize = 14,
     bgColor = Color3.fromRGB(22, 22, 25),
     textColor = Color3.fromRGB(255, 255, 255),
@@ -48,7 +49,7 @@ local saveData = {
     maxAnimSpeedLimit = 5.0,
     minAnimSpeedLimit = 0.1,
     uiConfig = {
-        height = 415,
+        height = 455,
         textSize = 14,
         bgR = 22, bgG = 22, bgB = 25,
         textR = 255, textG = 255, textB = 255,
@@ -64,6 +65,7 @@ local animator = nil
 local rootPart = nil
 local track = nil
 local poseTrack = nil
+local walkSpeedConn = nil
 
 local function normaliseLimits()
     minWalkSpeedLimit = math.max(0, tonumber(minWalkSpeedLimit) or 1)
@@ -95,20 +97,29 @@ local function loadSavesFromFile()
             if decoded.minAnimSpeedLimit ~= nil then minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit end
             
             if decoded.uiConfig then
-                customUiConfig.height = decoded.uiConfig.height or 415
+                customUiConfig.height = decoded.uiConfig.height or 455
                 customUiConfig.textSize = decoded.uiConfig.textSize or 14
                 
-                local bgBVal = decoded.uiConfig.bgB
-                if bgBVal == nil then bgBVal = 25 end
-                customUiConfig.bgColor = Color3.fromRGB(decoded.uiConfig.bgR or 22, decoded.uiConfig.bgG or 22, bgBVal)
+                local bgR = decoded.uiConfig.bgR or 22
+                local bgG = decoded.uiConfig.bgG or 22
+                local bgB = decoded.uiConfig.bgB or 25
+                customUiConfig.bgColor = Color3.fromRGB(bgR, bgG, bgB)
 
-                customUiConfig.textColor = Color3.fromRGB(decoded.uiConfig.textR or 255, decoded.uiConfig.textG or 255, decoded.uiConfig.textB or 255)
+                local textR = decoded.uiConfig.textR or 255
+                local textG = decoded.uiConfig.textG or 255
+                local textB = decoded.uiConfig.textB or 255
+                customUiConfig.textColor = Color3.fromRGB(textR, textG, textB)
                 
-                local textBgBVal = decoded.uiConfig.textBgB
-                if textBgBVal == nil then textBgBVal = 36 end
-                customUiConfig.textBgColor = Color3.fromRGB(decoded.uiConfig.textBgR or 32, decoded.uiConfig.textBgG or 32, textBgBVal)
+                local textBgR = decoded.uiConfig.textBgR or 32
+                local textBgG = decoded.uiConfig.textBgG or 32
+                local textBgB = decoded.uiConfig.textBgB or 36
+                customUiConfig.textBgColor = Color3.fromRGB(textBgR, textBgG, textBgB)
 
-                customUiConfig.sliderColor = Color3.fromRGB(decoded.uiConfig.sliderR or 255, decoded.uiConfig.sliderG or 120, decoded.uiConfig.sliderB or 200)
+                local sliderR = decoded.uiConfig.sliderR or 255
+                local sliderG = decoded.uiConfig.sliderG or 120
+                local sliderB = decoded.uiConfig.sliderB or 200
+                customUiConfig.sliderColor = Color3.fromRGB(sliderR, sliderG, sliderB)
+                
                 customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.05
             end
         end
@@ -482,6 +493,7 @@ local say
 local refreshSavesUI
 local tallEnabled = false
 local shortEnabled = false
+local ragdollEnabled = false
 
 local function mk(parent, cls, y, h, text)
     local o = Instance.new(cls, parent)
@@ -592,9 +604,10 @@ box.ClearTextOnFocus = false
 local btn = mk(mainFrame, "TextButton", 203, 32, "Play")
 local btnTall = mk(mainFrame, "TextButton", 243, 32, "Tall: OFF")
 local btnShort = mk(mainFrame, "TextButton", 283, 32, "Short: OFF")
-local btnToggleSaves = mk(mainFrame, "TextButton", 323, 32, "Custom Saves: OFF")
+local btnRagdoll = mk(mainFrame, "TextButton", 323, 32, "Ragdoll: OFF")
+local btnToggleSaves = mk(mainFrame, "TextButton", 363, 32, "Custom Saves: OFF")
 
-local status = mk(mainFrame, "TextLabel", 363, 34)
+local status = mk(mainFrame, "TextLabel", 403, 34)
 status.BackgroundTransparency = 1
 status.TextXAlignment = Enum.TextXAlignment.Left
 status.TextWrapped = true
@@ -613,21 +626,23 @@ local function setSpeedMinimized(state)
     if sliderContainerParent then sliderContainerParent.Visible = not isSpeedMinimized end
     
     if isSpeedMinimized then
-        mainFrame.Size = UDim2.fromOffset(250, 316)
+        mainFrame.Size = UDim2.fromOffset(250, 356)
         box.Position = UDim2.fromOffset(10, 69)
         btn.Position = UDim2.fromOffset(10, 109)
         btnTall.Position = UDim2.fromOffset(10, 149)
         btnShort.Position = UDim2.fromOffset(10, 189)
-        btnToggleSaves.Position = UDim2.fromOffset(10, 224)
-        status.Position = UDim2.fromOffset(10, 264)
+        btnRagdoll.Position = UDim2.fromOffset(10, 229)
+        btnToggleSaves.Position = UDim2.fromOffset(10, 264)
+        status.Position = UDim2.fromOffset(10, 304)
     else
         mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
         box.Position = UDim2.fromOffset(10, 163)
         btn.Position = UDim2.fromOffset(10, 203)
         btnTall.Position = UDim2.fromOffset(10, 243)
         btnShort.Position = UDim2.fromOffset(10, 283)
-        btnToggleSaves.Position = UDim2.fromOffset(10, 323)
-        status.Position = UDim2.fromOffset(10, 363)
+        btnRagdoll.Position = UDim2.fromOffset(10, 323)
+        btnToggleSaves.Position = UDim2.fromOffset(10, 363)
+        status.Position = UDim2.fromOffset(10, 403)
     end
 end
 
@@ -816,7 +831,7 @@ local function createOptionSlider(yPos, labelText, minVal, maxVal, defaultVal, c
     end)
 end
 
-createOptionSlider(45, "GUI Height", 250, 600, 415, customUiConfig.height, function(v)
+createOptionSlider(45, "GUI Height", 250, 600, 455, customUiConfig.height, function(v)
     customUiConfig.height = math.round(v)
     updateUiThemeAndScale()
     saveSavesToFile()
@@ -1008,7 +1023,7 @@ dtbCorner.CornerRadius = UDim.new(0, 6)
 addProfessionalStroke(defaultThemeBtn)
 
 defaultThemeBtn.MouseButton1Click:Connect(function()
-    customUiConfig.height = 415
+    customUiConfig.height = 455
     customUiConfig.textSize = 14
     customUiConfig.bgColor = Color3.fromRGB(22, 22, 25)
     customUiConfig.textColor = Color3.fromRGB(255, 255, 255)
@@ -1107,21 +1122,29 @@ refreshUiSlotsUI = function()
         addProfessionalStroke(slotBtn)
 
         slotBtn.MouseButton1Click:Connect(function()
-            customUiConfig.height = slotData.height or 415
+            customUiConfig.height = slotData.height or 455
             customUiConfig.textSize = slotData.textSize or 14
             customUiConfig.bgTransparency = slotData.bgTransparency or 0.05
             
-            local slotBgB = slotData.bgB
-            if slotBgB == nil then slotBgB = 25 end
-            customUiConfig.bgColor = Color3.fromRGB(slotData.bgR or 22, slotData.bgG or 22, slotBgB)
+            local slotBgR = slotData.bgR or 22
+            local slotBgG = slotData.bgG or 22
+            local slotBgB = slotData.bgB or 25
+            customUiConfig.bgColor = Color3.fromRGB(slotBgR, slotBgG, slotBgB)
             
-            customUiConfig.textColor = Color3.fromRGB(slotData.textR or 255, slotData.textG or 255, slotData.textB or 255)
+            local slotTextR = slotData.textR or 255
+            local slotTextG = slotData.textG or 255
+            local slotTextB = slotData.textB or 255
+            customUiConfig.textColor = Color3.fromRGB(slotTextR, slotTextG, slotTextB)
             
-            local slotTextBgB = slotData.textBgB
-            if slotTextBgB == nil then slotTextBgB = 36 end
-            customUiConfig.textBgColor = Color3.fromRGB(slotData.textBgR or 32, slotData.textBgG or 32, slotTextBgB)
+            local slotTextBgR = slotData.textBgR or 32
+            local slotTextBgG = slotData.textBgG or 32
+            local slotTextBgB = slotData.textBgB or 36
+            customUiConfig.textBgColor = Color3.fromRGB(slotTextBgR, slotTextBgG, slotTextBgB)
             
-            customUiConfig.sliderColor = Color3.fromRGB(slotData.sliderR or 255, slotData.sliderG or 120, slotData.sliderB or 200)
+            local slotSliderR = slotData.sliderR or 255
+            local slotSliderG = slotData.sliderG or 120
+            local slotSliderB = slotData.sliderB or 200
+            customUiConfig.sliderColor = Color3.fromRGB(slotSliderR, slotSliderG, slotSliderB)
 
             updateUiThemeAndScale()
             saveSavesToFile()
@@ -2013,6 +2036,71 @@ btnShort.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Movable & Jumpable Ragdoll Implementation
+local ragdollConnection = nil
+
+local function setRagdoll(state)
+    ragdollEnabled = state
+    btnRagdoll.Text = "Ragdoll: " .. (ragdollEnabled and "ON" or "OFF")
+    
+    if not plr.Character or not humanoid or not rootPart then return end
+    local char = plr.Character
+    
+    if ragdollEnabled then
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        for _, desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Motor6D") then
+                desc.Enabled = false
+            elseif desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" then
+                pcall(function()
+                    desc.CustomPhysicalProperties = PhysicalProperties.new(0.6, 0.3, 0.5, 1, 1)
+                end)
+            end
+        end
+
+        if ragdollConnection then ragdollConnection:Disconnect() end
+        ragdollConnection = RunService.RenderStepped:Connect(function()
+            if not ragdollEnabled or not rootPart or not rootPart.Parent then 
+                if ragdollConnection then ragdollConnection:Disconnect() end
+                return 
+            end
+
+            local moveDir = humanoid.MoveDirection
+            local speed = currentWalkSpeed
+            local currentVel = rootPart.AssemblyLinearVelocity
+
+            if moveDir.Magnitude > 0 then
+                rootPart.AssemblyLinearVelocity = Vector3.new(moveDir.X * speed, currentVel.Y, moveDir.Z * speed)
+            end
+
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                if math.abs(currentVel.Y) < 1.0 then
+                    rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, 50, currentVel.Z)
+                end
+            end
+        end)
+
+        say("Movable & Jumpable Ragdoll enabled.")
+    else
+        if ragdollConnection then ragdollConnection:Disconnect() end
+        for _, desc in ipairs(char:GetDescendants()) do
+            if desc:IsA("Motor6D") then
+                desc.Enabled = true
+            elseif desc:IsA("BasePart") then
+                pcall(function()
+                    desc.CustomPhysicalProperties = nil
+                end)
+            end
+        end
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        say("Ragdoll disabled.")
+    end
+end
+
+btnRagdoll.MouseButton1Click:Connect(function()
+    setRagdoll(not ragdollEnabled)
+end)
+
 local function startAnimLoop()
     if not animator then return end
     if eventConn then eventConn:Disconnect(); eventConn = nil end
@@ -2032,7 +2120,9 @@ local function startAnimLoop()
         if not animator or not animator.Parent then return end
 
         if isWalkSpeedActive and humanoid and humanoid.Parent then
-            humanoid.WalkSpeed = currentWalkSpeed
+            if humanoid.WalkSpeed ~= currentWalkSpeed then
+                humanoid.WalkSpeed = currentWalkSpeed
+            end
         end
 
         if rootPart and rootPart.Parent then
@@ -2068,22 +2158,56 @@ local function startAnimLoop()
         local velocity = rootPart.AssemblyLinearVelocity
         local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 
-        local animationSpeed
-        if activeAnimConfig.speedScaled then
-            local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
-            animationSpeed = math.clamp((groundSpeed / baseWalkSpeed) * currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-        else
-            animationSpeed = math.clamp(currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-        end
-
-        pcall(function() track:AdjustSpeed(animationSpeed) end)
-
-        if groundSpeed < 0.1 then
+        -- Comprehensive limb-to-floor alignment check for idle states
+        if groundSpeed < 0.3 then
             pcall(function()
+                local char = plr.Character
+                if char then
+                    local leftFoot = char:FindFirstChild("LeftFoot") or char:FindFirstChild("Left Leg")
+                    local rightFoot = char:FindFirstChild("RightFoot") or char:FindFirstChild("Right Leg")
+                    local leftHand = char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm")
+                    local rightHand = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
+                    
+                    local raycastParams = RaycastParams.new()
+                    raycastParams.FilterDescendantsInstances = {char}
+                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+                    local limbsOnGround = 0
+                    local totalLimbsChecked = 0
+
+                    for _, limb in ipairs({leftFoot, rightFoot, leftHand, rightHand}) do
+                        if limb and limb:IsA("BasePart") then
+                            totalLimbsChecked = totalLimbsChecked + 1
+                            local ray = workspace:Raycast(limb.Position, Vector3.new(0, -2.5, 0), raycastParams)
+                            if ray then
+                                limbsOnGround = limbsOnGround + 1
+                            end
+                        end
+                    end
+
+                    -- If a majority of limbs are aligned/resting near the ground surface
+                    if totalLimbsChecked > 0 and (limbsOnGround / totalLimbsChecked) >= 0.5 then
+                        local targetPosition = math.min(STATIONARY_REST_TIME, math.max(track.Length - 0.001, 0))
+                        track.TimePosition += (targetPosition - track.TimePosition) * math.clamp(dt * 10, 0, 1)
+                        track:AdjustSpeed(currentAnimMultiplier * 0.1)
+                        return
+                    end
+                end
+
                 local targetPosition = math.min(STATIONARY_REST_TIME, math.max(track.Length - 0.001, 0))
-                track.TimePosition += (targetPosition - track.TimePosition) * math.clamp(dt * 10, 0, 1)
-                track:AdjustSpeed(0)
+                track.TimePosition += (targetPosition - track.TimePosition) * math.clamp(dt * 5, 0, 1)
+                track:AdjustSpeed(currentAnimMultiplier * 0.5)
             end)
+        else
+            local animationSpeed
+            if activeAnimConfig.speedScaled then
+                local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
+                animationSpeed = math.clamp((groundSpeed / baseWalkSpeed) * currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+            else
+                animationSpeed = math.clamp(currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+            end
+
+            pcall(function() track:AdjustSpeed(animationSpeed) end)
         end
     end)
 end
@@ -2099,7 +2223,8 @@ refreshSavesUI = function()
     for i, save in ipairs(saveData.customSaves) do
         table.insert(indexedSaves, {index = i, save = save})
     end
-    table.sort(indexedSaves, function(a: {index: number, save: any}, b: {index: number, save: any}): boolean
+    
+    table.sort(indexedSaves, function(a, b)
         return string.lower(a.save.name) < string.lower(b.save.name)
     end)
     
@@ -2215,6 +2340,13 @@ local function bind(char)
     currentWalkSpeed = originalWalkSpeed
     isWalkSpeedActive = false
 
+    if walkSpeedConn then walkSpeedConn:Disconnect() end
+    walkSpeedConn = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+        if isWalkSpeedActive and humanoid.WalkSpeed ~= currentWalkSpeed then
+            humanoid.WalkSpeed = currentWalkSpeed
+        end
+    end)
+
     rootPart = char:WaitForChild("HumanoidRootPart", 5)
     animator = humanoid:WaitForChild("Animator", 5)
 
@@ -2224,6 +2356,8 @@ local function bind(char)
     btnTall.Text = "Tall: OFF"
     shortEnabled = false 
     btnShort.Text = "Short: OFF"
+    ragdollEnabled = false
+    btnRagdoll.Text = "Ragdoll: OFF"
 
     btnToggleSaves.Text = "Custom Saves: OFF"
     startAnimLoop()
@@ -2266,6 +2400,7 @@ end)
 
 plr.CharacterAdded:Connect(function(char)
     if globalLoopConn then globalLoopConn:Disconnect(); globalLoopConn = nil end
+    if ragdollConnection then ragdollConnection:Disconnect(); ragdollConnection = nil end
     enabled = false 
     box.Text = "" 
     savesFrame.Visible = false 

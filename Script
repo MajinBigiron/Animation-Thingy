@@ -605,6 +605,26 @@ local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, 
     local localDragging = false
     local pressPos = Vector2.zero
     local wasPreviouslyMinimized = false
+    local isHovered = false
+
+    btn.MouseEnter:Connect(function()
+        isHovered = true
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        isHovered = false
+    end)
+
+    UserInputService.InputBegan:Connect(function(input)
+        if isHovered and input.UserInputType == Enum.UserInputType.MouseWheel then
+            local step = 1
+            local newVal = currentValHolder + (input.Position.Z > 0 and step or -step)
+            if labelText == "WalkSpeed" then
+                isWalkSpeedActive = true
+            end
+            updateValue(newVal, false)
+        end
+    end)
     
     local function cancelHold()
         if holdTimer then

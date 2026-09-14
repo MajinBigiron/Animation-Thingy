@@ -4,12 +4,10 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
 
 local plr = Players.LocalPlayer
 local HIGH = Enum.AnimationPriority.Action4
 
--- === Speed & Movement Configuration ===
 local MIN_ANIM_SPEED = 0.001 
 local MAX_ANIM_SPEED = 5.0 
 local STATIONARY_REST_TIME = 0.5 
@@ -18,39 +16,33 @@ local originalWalkSpeed = 16
 local currentWalkSpeed = 16
 local currentAnimMultiplier = 1.0
 
--- Configurable maximum and minimum limits for sliders (defaults)
 local maxWalkSpeedLimit = 100
 local minWalkSpeedLimit = 1
 local maxAnimSpeedLimit = 5.0
 local minAnimSpeedLimit = 0.1
 
--- Customization Configuration Storage
 local customUiConfig = {
     height = 415,
     textSize = 14,
-    bgColor = Color3.fromRGB(25, 25, 25),
-    bgTransparency = 0.0
+    bgColor = Color3.fromRGB(22, 22, 25),
+    textColor = Color3.fromRGB(255, 255, 255),
+    textBgColor = Color3.fromRGB(32, 32, 36),
+    sliderColor = Color3.fromRGB(255, 120, 200),
+    bgTransparency = 0.05
 }
 
--- Flag to track whether custom walkspeed looping/modifying is active
 local isWalkSpeedActive = false
+local isAnimSpeedActive = false
 
--- Hip height configuration storage
-local originalHipHeight = 0
-local currentExtraHipHeight = 0
-local isHipHeightActive = false
-
--- Strictly tracked active animation configuration state
 local activeAnimConfig = {
     speedScaled = true,
-    hipHeightEnabled = false,
     isPose = false
 }
 
--- === Persistent File Storage ===
 local SAVE_FILE_NAME = "AnimOverride_CustomSaves.json"
 local saveData = {
     customSaves = {},
+    uiSaveSlots = {},
     maxWalkSpeedLimit = 100,
     minWalkSpeedLimit = 1,
     maxAnimSpeedLimit = 5.0,
@@ -58,17 +50,24 @@ local saveData = {
     uiConfig = {
         height = 415,
         textSize = 14,
-        bgR = 25,
-        bgG = 25,
-        bgB = 25,
-        bgTransparency = 0.0
+        bgR = 22, bgG = 22, bgB = 25,
+        textR = 255, textG = 255, textB = 255,
+        textBgR = 32, textBgG = 32, textBgB = 36,
+        sliderR = 255, sliderG = 120, sliderB = 200,
+        bgTransparency = 0.05
     }
 }
+
+-- Forward declare shared references so they are globally available immediately
+local humanoid = nil
+local animator = nil
+local rootPart = nil
+local track = nil
+local poseTrack = nil
 
 local function normaliseLimits()
     minWalkSpeedLimit = math.max(0, tonumber(minWalkSpeedLimit) or 1)
     maxWalkSpeedLimit = math.max(minWalkSpeedLimit, tonumber(maxWalkSpeedLimit) or 100)
-
     minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, tonumber(minAnimSpeedLimit) or 0.1)
     maxAnimSpeedLimit = math.max(minAnimSpeedLimit, tonumber(maxAnimSpeedLimit) or MAX_ANIM_SPEED)
 end
@@ -78,10 +77,7 @@ local function loadSavesFromFile()
         if readfile and isfile and isfile(SAVE_FILE_NAME) then
             local content = readfile(SAVE_FILE_NAME)
             local decoded = HttpService:JSONDecode(content)
-
-            if type(decoded) ~= "table" then
-                return
-            end
+            if type(decoded) ~= "table" then return end
 
             if type(decoded.customSaves) == "table" then
                 saveData.customSaves = decoded.customSaves
@@ -89,31 +85,34 @@ local function loadSavesFromFile()
                 saveData.customSaves = decoded
             end
 
-            if decoded.maxWalkSpeedLimit ~= nil then
-                maxWalkSpeedLimit = tonumber(decoded.maxWalkSpeedLimit) or maxWalkSpeedLimit
+            if type(decoded.uiSaveSlots) == "table" then
+                saveData.uiSaveSlots = decoded.uiSaveSlots
             end
 
-            if decoded.minWalkSpeedLimit ~= nil then
-                minWalkSpeedLimit = tonumber(decoded.minWalkSpeedLimit) or minWalkSpeedLimit
-            end
-
-            if decoded.maxAnimSpeedLimit ~= nil then
-                maxAnimSpeedLimit = tonumber(decoded.maxAnimSpeedLimit) or maxAnimSpeedLimit
-            end
-
-            if decoded.minAnimSpeedLimit ~= nil then
-                minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit
-            end
+            if decoded.maxWalkSpeedLimit ~= nil then maxWalkSpeedLimit = tonumber(decoded.maxWalkSpeedLimit) or maxWalkSpeedLimit end
+            if decoded.minWalkSpeedLimit ~= nil then minWalkSpeedLimit = tonumber(decoded.minWalkSpeedLimit) or minWalkSpeedLimit end
+            if decoded.maxAnimSpeedLimit ~= nil then maxAnimSpeedLimit = tonumber(decoded.maxAnimSpeedLimit) or maxAnimSpeedLimit end
+            if decoded.minAnimSpeedLimit ~= nil then minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit end
             
             if decoded.uiConfig then
                 customUiConfig.height = decoded.uiConfig.height or 415
                 customUiConfig.textSize = decoded.uiConfig.textSize or 14
-                customUiConfig.bgColor = Color3.fromRGB(decoded.uiConfig.bgR or 25, decoded.uiConfig.bgG or 25, decoded.uiConfig.bgB or 25)
-                customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.0
+                
+                local bgBVal = decoded.uiConfig.bgB
+                if bgBVal == nil then bgBVal = 25 end
+                customUiConfig.bgColor = Color3.fromRGB(decoded.uiConfig.bgR or 22, decoded.uiConfig.bgG or 22, bgBVal)
+
+                customUiConfig.textColor = Color3.fromRGB(decoded.uiConfig.textR or 255, decoded.uiConfig.textG or 255, decoded.uiConfig.textB or 255)
+                
+                local textBgBVal = decoded.uiConfig.textBgB
+                if textBgBVal == nil then textBgBVal = 36 end
+                customUiConfig.textBgColor = Color3.fromRGB(decoded.uiConfig.textBgR or 32, decoded.uiConfig.textBgG or 32, textBgBVal)
+
+                customUiConfig.sliderColor = Color3.fromRGB(decoded.uiConfig.sliderR or 255, decoded.uiConfig.sliderG or 120, decoded.uiConfig.sliderB or 200)
+                customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.05
             end
         end
     end)
-
     normaliseLimits()
 end
 
@@ -130,6 +129,15 @@ local function saveSavesToFile()
                 bgR = math.floor(customUiConfig.bgColor.R * 255 + 0.5),
                 bgG = math.floor(customUiConfig.bgColor.G * 255 + 0.5),
                 bgB = math.floor(customUiConfig.bgColor.B * 255 + 0.5),
+                textR = math.floor(customUiConfig.textColor.R * 255 + 0.5),
+                textG = math.floor(customUiConfig.textColor.G * 255 + 0.5),
+                textB = math.floor(customUiConfig.textColor.B * 255 + 0.5),
+                textBgR = math.floor(customUiConfig.textBgColor.R * 255 + 0.5),
+                textBgG = math.floor(customUiConfig.textBgColor.G * 255 + 0.5),
+                textBgB = math.floor(customUiConfig.textBgColor.B * 255 + 0.5),
+                sliderR = math.floor(customUiConfig.sliderColor.R * 255 + 0.5),
+                sliderG = math.floor(customUiConfig.sliderColor.G * 255 + 0.5),
+                sliderB = math.floor(customUiConfig.sliderColor.B * 255 + 0.5),
                 bgTransparency = customUiConfig.bgTransparency
             }
             writefile(SAVE_FILE_NAME, HttpService:JSONEncode(saveData))
@@ -145,7 +153,6 @@ gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = plr:WaitForChild("PlayerGui")
 
--- === Intro Screen ===
 local introOverlay = Instance.new("Frame", gui)
 introOverlay.Size = UDim2.fromScale(1, 1)
 introOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -165,7 +172,7 @@ introTitle.Size = UDim2.new(1, 0, 0, 60)
 introTitle.Position = UDim2.fromScale(0, 0)
 introTitle.BackgroundTransparency = 1
 introTitle.TextColor3 = Color3.new(1, 1, 1)
-introTitle.Font = Enum.Font.SourceSansBold
+introTitle.Font = Enum.Font.GothamBold
 introTitle.TextSize = 40
 introTitle.Text = "AnimOverride"
 introTitle.ZIndex = 101
@@ -175,23 +182,32 @@ introSubtitle.Size = UDim2.new(1, 0, 0, 30)
 introSubtitle.Position = UDim2.fromOffset(0, 65)
 introSubtitle.BackgroundTransparency = 1
 introSubtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
-introSubtitle.Font = Enum.Font.SourceSansSemibold
+introSubtitle.Font = Enum.Font.GothamSemibold
 introSubtitle.TextSize = 18
 introSubtitle.Text = "by Suta Burger"
 introSubtitle.ZIndex = 101
 
--- Stay for 3 seconds, then fade out over 1.5 seconds
+local mainFrame = Instance.new("Frame", gui)
+mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
+mainFrame.Position = UDim2.new(0, 20, 1, 50)
+mainFrame.BackgroundColor3 = customUiConfig.bgColor
+mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
+mainFrame.BorderSizePixel = 0
+
 task.delay(3, function()
     local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     TweenService:Create(introOverlay, tweenInfo, {BackgroundTransparency = 1}):Play()
     TweenService:Create(introTitle, tweenInfo, {TextTransparency = 1}):Play()
     TweenService:Create(introSubtitle, tweenInfo, {TextTransparency = 1}):Play()
     
+    TweenService:Create(mainFrame, TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 20, 0.5, -customUiConfig.height / 2)
+    }):Play()
+
     task.wait(1.5)
     introOverlay:Destroy()
 end)
 
--- === UI Toggle Keybind (= key) & Notification ===
 UserInputService.InputBegan:Connect(function(input)
     if input.KeyCode == Enum.KeyCode.Equals then
         if UserInputService:GetFocusedTextBox() then return end
@@ -199,204 +215,25 @@ UserInputService.InputBegan:Connect(function(input)
     end
 end)
 
-task.delay(1, function()
-    pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = "AnimOverride Loaded",
-            Text = "Press the '=' key to open/close the menu.",
-            Duration = 5
-        })
-    end)
-end)
+local function addProfessionalStroke(parent, color, thickness)
+    local stroke = Instance.new("UIStroke", parent)
+    stroke.Color = color or Color3.new(1, 1, 1)
+    stroke.Transparency = 0.85
+    stroke.Thickness = thickness or 1
+    return stroke
+end
 
--- Main Control Panel (Left Middle)
-local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
-mainFrame.Position = UDim2.new(0, 20, 0.5, -customUiConfig.height / 2)
-mainFrame.BackgroundColor3 = customUiConfig.bgColor
-mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
-mainFrame.BorderSizePixel = 0
-
-local mainCorner = Instance.new("UICorner", mainFrame)
-mainCorner.CornerRadius = UDim.new(0, 8)
-
--- Custom Saves Panel (Right Middle)
-local savesFrame = Instance.new("Frame", gui)
-savesFrame.Size = UDim2.fromOffset(250, 345)
-savesFrame.Position = UDim2.new(1, -270, 0.5, -172.5)
-savesFrame.BackgroundColor3 = customUiConfig.bgColor
-savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
-savesFrame.BorderSizePixel = 0
-savesFrame.Visible = false
-
-local savesCorner = Instance.new("UICorner", savesFrame)
-savesCorner.CornerRadius = UDim.new(0, 8)
-
--- Options Popout Modal Overlay & Frame (Center Screen)
-local optionsModalOverlay = Instance.new("Frame", gui)
-optionsModalOverlay.Size = UDim2.fromScale(1, 1)
-optionsModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-optionsModalOverlay.BackgroundTransparency = 0.5
-optionsModalOverlay.Visible = false
-optionsModalOverlay.ZIndex = 50
-
-local optionsModalFrame = Instance.new("Frame", optionsModalOverlay)
-optionsModalFrame.Size = UDim2.fromOffset(300, 280)
-optionsModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-optionsModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
-optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-optionsModalFrame.BorderSizePixel = 0
-optionsModalFrame.ZIndex = 51
-
-local optionsModalCorner = Instance.new("UICorner", optionsModalFrame)
-optionsModalCorner.CornerRadius = UDim.new(0, 10)
-
--- Color Picker Sub-Popout Modal Overlay & Frame (Center Screen)
-local colorModalOverlay = Instance.new("Frame", gui)
-colorModalOverlay.Size = UDim2.fromScale(1, 1)
-colorModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-colorModalOverlay.BackgroundTransparency = 0.5
-colorModalOverlay.Visible = false
-colorModalOverlay.ZIndex = 70
-
-local colorModalFrame = Instance.new("Frame", colorModalOverlay)
-colorModalFrame.Size = UDim2.fromOffset(320, 290)
-colorModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-colorModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-colorModalFrame.BackgroundColor3 = customUiConfig.bgColor
-colorModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-colorModalFrame.BorderSizePixel = 0
-colorModalFrame.ZIndex = 71
-
-local colorModalCorner = Instance.new("UICorner", colorModalFrame)
-colorModalCorner.CornerRadius = UDim.new(0, 10)
-
--- Smooth Pop-In/Pop-Out Modal Popup (Center Screen)
-local popupOverlay = Instance.new("Frame", gui)
-popupOverlay.Size = UDim2.fromScale(1, 1)
-popupOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-popupOverlay.BackgroundTransparency = 0.5
-popupOverlay.Visible = false
-popupOverlay.ZIndex = 10
-
-local modalFrame = Instance.new("Frame", popupOverlay)
-modalFrame.Size = UDim2.fromOffset(300, 330)
-modalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-modalFrame.Position = UDim2.fromScale(0.5, 0.5)
-modalFrame.BackgroundColor3 = customUiConfig.bgColor
-modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-modalFrame.BorderSizePixel = 0
-modalFrame.ZIndex = 11
-
-local modalCorner = Instance.new("UICorner", modalFrame)
-modalCorner.CornerRadius = UDim.new(0, 10)
-
--- Delete Confirmation Popup (Center Screen)
-local deleteModalOverlay = Instance.new("Frame", gui)
-deleteModalOverlay.Size = UDim2.fromScale(1, 1)
-deleteModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-deleteModalOverlay.BackgroundTransparency = 0.5
-deleteModalOverlay.Visible = false
-deleteModalOverlay.ZIndex = 40
-
-local deleteModalFrame = Instance.new("Frame", deleteModalOverlay)
-deleteModalFrame.Size = UDim2.fromOffset(280, 160)
-deleteModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-deleteModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
-deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-deleteModalFrame.BorderSizePixel = 0
-deleteModalFrame.ZIndex = 41
-
-local deleteModalCorner = Instance.new("UICorner", deleteModalFrame)
-deleteModalCorner.CornerRadius = UDim.new(0, 10)
-
--- Speed Config Modal Popup (Center Screen for Speed Editor)
-local speedModalOverlay = Instance.new("Frame", gui)
-speedModalOverlay.Size = UDim2.fromScale(1, 1)
-speedModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-speedModalOverlay.BackgroundTransparency = 0.5
-speedModalOverlay.Visible = false
-speedModalOverlay.ZIndex = 20
-
-local speedModalFrame = Instance.new("Frame", speedModalOverlay)
-speedModalFrame.Size = UDim2.fromOffset(280, 250)
-speedModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-speedModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-speedModalFrame.BackgroundColor3 = customUiConfig.bgColor
-speedModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-speedModalFrame.BorderSizePixel = 0
-speedModalFrame.ZIndex = 21
-
-local speedModalCorner = Instance.new("UICorner", speedModalFrame)
-speedModalCorner.CornerRadius = UDim.new(0, 10)
-
--- Full-Screen Precision Overlay
-local precisionOverlay = Instance.new("Frame", gui)
-precisionOverlay.Size = UDim2.fromScale(1, 1)
-precisionOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-precisionOverlay.BackgroundTransparency = 0.6
-precisionOverlay.Visible = false
-precisionOverlay.ZIndex = 30
-
-local precisionContainer = Instance.new("Frame", precisionOverlay)
-precisionContainer.Size = UDim2.new(0.9, 0, 0, 100)
-precisionContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-precisionContainer.Position = UDim2.fromScale(0.5, 0.5)
-precisionContainer.BackgroundColor3 = customUiConfig.bgColor
-precisionContainer.BackgroundTransparency = customUiConfig.bgTransparency
-precisionContainer.BorderSizePixel = 0
-precisionContainer.ZIndex = 31
-
-local pcCorner = Instance.new("UICorner", precisionContainer)
-pcCorner.CornerRadius = UDim.new(0, 12)
-
-local precisionTitle = Instance.new("TextLabel", precisionContainer)
-precisionTitle.Size = UDim2.new(1, 0, 0, 30)
-precisionTitle.Position = UDim2.fromOffset(0, 15)
-precisionTitle.BackgroundTransparency = 1
-precisionTitle.TextColor3 = Color3.fromRGB(255, 200, 60)
-precisionTitle.Font = Enum.Font.SourceSansBold
-precisionTitle.TextSize = 18
-precisionTitle.ZIndex = 32
-precisionTitle.Text = "Precision Mode: 0.0"
-
-local screenBar = Instance.new("Frame", precisionContainer)
-screenBar.Size = UDim2.new(0.9, 0, 0, 16)
-screenBar.AnchorPoint = Vector2.new(0.5, 0)
-screenBar.Position = UDim2.new(0.5, 0, 0, 60)
-screenBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-screenBar.BorderSizePixel = 0
-screenBar.ZIndex = 32
-local sbCorner = Instance.new("UICorner", screenBar)
-sbCorner.CornerRadius = UDim.new(1, 0)
-
-local screenFill = Instance.new("Frame", screenBar)
-screenFill.Size = UDim2.new(0, 0, 1, 0)
-screenFill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
-screenFill.BorderSizePixel = 0
-screenFill.ZIndex = 33
-local sfCorner = Instance.new("UICorner", screenFill)
-sfCorner.CornerRadius = UDim.new(1, 0)
-
-local screenBtn = Instance.new("TextButton", screenBar)
-screenBtn.Size = UDim2.new(1, 0, 1, 0)
-screenBtn.BackgroundTransparency = 1
-screenBtn.Text = ""
-screenBtn.ZIndex = 34
-
--- === Dragging Utility Function ===
-local function makeDraggable(frame, handle)
-    handle = handle or frame
+local function makeDraggable(frame)
     local dragging = false
-    local dragInput, dragStart, startPos
+    local dragStart, startPos, targetPos
 
-    handle.InputBegan:Connect(function(input)
+    frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if UserInputService:GetFocusedTextBox() then return end
             dragging = true
             dragStart = input.Position
             startPos = frame.Position
+            targetPos = startPos
 
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
@@ -409,7 +246,7 @@ local function makeDraggable(frame, handle)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
+            targetPos = UDim2.new(
                 startPos.X.Scale,
                 startPos.X.Offset + delta.X,
                 startPos.Y.Scale,
@@ -417,389 +254,335 @@ local function makeDraggable(frame, handle)
             )
         end
     end)
+
+    RunService.RenderStepped:Connect(function(dt)
+        if targetPos then
+            frame.Position = frame.Position:Lerp(targetPos, math.clamp(dt * 15, 0, 1))
+        end
+    end)
 end
 
+makeDraggable(mainFrame)
+local mainCorner = Instance.new("UICorner", mainFrame)
+mainCorner.CornerRadius = UDim.new(0, 10)
+addProfessionalStroke(mainFrame)
+
+local savesFrame = Instance.new("Frame", gui)
+savesFrame.Size = UDim2.fromOffset(510, 345)
+savesFrame.Position = UDim2.new(1, -530, 0.5, -172.5)
+savesFrame.BackgroundColor3 = customUiConfig.bgColor
+savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
+savesFrame.BorderSizePixel = 0
+savesFrame.Visible = false
+makeDraggable(savesFrame)
+local savesCorner = Instance.new("UICorner", savesFrame)
+savesCorner.CornerRadius = UDim.new(0, 10)
+addProfessionalStroke(savesFrame)
+
+local optionsModalOverlay = Instance.new("Frame", gui)
+optionsModalOverlay.Size = UDim2.fromScale(1, 1)
+optionsModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+optionsModalOverlay.BackgroundTransparency = 0.6
+optionsModalOverlay.Visible = false
+optionsModalOverlay.ZIndex = 50
+
+local optionsModalFrame = Instance.new("Frame", optionsModalOverlay)
+optionsModalFrame.Size = UDim2.fromOffset(380, 250)
+optionsModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+optionsModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+optionsModalFrame.BorderSizePixel = 0
+optionsModalFrame.ZIndex = 51
+makeDraggable(optionsModalFrame)
+local optionsModalCorner = Instance.new("UICorner", optionsModalFrame)
+optionsModalCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(optionsModalFrame)
+
+local hoverColorPanel = Instance.new("Frame", optionsModalFrame)
+hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+hoverColorPanel.Position = UDim2.new(0, 0, 1, 0)
+hoverColorPanel.BackgroundColor3 = customUiConfig.bgColor
+hoverColorPanel.BackgroundTransparency = customUiConfig.bgTransparency
+hoverColorPanel.BorderSizePixel = 0
+hoverColorPanel.ClipsDescendants = true
+hoverColorPanel.Visible = false
+hoverColorPanel.ZIndex = 55
+local hcpCorner = Instance.new("UICorner", hoverColorPanel)
+hcpCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(hoverColorPanel)
+
+local hoverUiSlotsPanel = Instance.new("Frame", optionsModalFrame)
+hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+hoverUiSlotsPanel.Position = UDim2.new(0, 0, 1, 0)
+hoverUiSlotsPanel.BackgroundColor3 = customUiConfig.bgColor
+hoverUiSlotsPanel.BackgroundTransparency = customUiConfig.bgTransparency
+hoverUiSlotsPanel.BorderSizePixel = 0
+hoverUiSlotsPanel.ClipsDescendants = true
+hoverUiSlotsPanel.Visible = false
+hoverUiSlotsPanel.ZIndex = 55
+local huspCorner = Instance.new("UICorner", hoverUiSlotsPanel)
+huspCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(hoverUiSlotsPanel)
+
+local colorTriggerBtn = Instance.new("TextButton", optionsModalFrame)
+colorTriggerBtn.Size = UDim2.fromOffset(45, 32)
+colorTriggerBtn.Position = UDim2.fromOffset(15, 205)
+colorTriggerBtn.BackgroundColor3 = customUiConfig.textBgColor
+colorTriggerBtn.TextColor3 = customUiConfig.textColor
+colorTriggerBtn.Font = Enum.Font.GothamBold
+colorTriggerBtn.TextSize = 14
+colorTriggerBtn.ZIndex = 53
+colorTriggerBtn.Text = "▼"
+local ctbCorner = Instance.new("UICorner", colorTriggerBtn)
+ctbCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(colorTriggerBtn)
+
+local limitModalOverlay = Instance.new("Frame", gui)
+limitModalOverlay.Size = UDim2.fromScale(1, 1)
+limitModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+limitModalOverlay.BackgroundTransparency = 0.6
+limitModalOverlay.Visible = false
+limitModalOverlay.ZIndex = 70
+
+local limitModalFrame = Instance.new("Frame", limitModalOverlay)
+limitModalFrame.Size = UDim2.fromOffset(300, 220)
+limitModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+limitModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
+limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+limitModalFrame.BorderSizePixel = 0
+limitModalFrame.ZIndex = 71
+makeDraggable(limitModalFrame)
+local limitModalCorner = Instance.new("UICorner", limitModalFrame)
+limitModalCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(limitModalFrame)
+
+local bigSliderOverlay = Instance.new("Frame", gui)
+bigSliderOverlay.Size = UDim2.fromScale(1, 1)
+bigSliderOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+bigSliderOverlay.BackgroundTransparency = 0.4
+bigSliderOverlay.Visible = false
+bigSliderOverlay.ZIndex = 200
+
+local bigSliderContainer = Instance.new("Frame", bigSliderOverlay)
+bigSliderContainer.Size = UDim2.new(0.8, 0, 0, 100)
+bigSliderContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+bigSliderContainer.Position = UDim2.fromScale(0.5, 0.5)
+bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
+bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
+bigSliderContainer.BorderSizePixel = 0
+bigSliderContainer.ZIndex = 201
+local bscCorner = Instance.new("UICorner", bigSliderContainer)
+bscCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(bigSliderContainer)
+
+local bigSliderTitle = Instance.new("TextLabel", bigSliderContainer)
+bigSliderTitle.Size = UDim2.new(1, -40, 0, 30)
+bigSliderTitle.Position = UDim2.fromOffset(20, 15)
+bigSliderTitle.BackgroundTransparency = 1
+bigSliderTitle.TextColor3 = customUiConfig.textColor
+bigSliderTitle.Font = Enum.Font.GothamBold
+bigSliderTitle.TextSize = 18
+bigSliderTitle.TextXAlignment = Enum.TextXAlignment.Left
+bigSliderTitle.ZIndex = 202
+bigSliderTitle.Text = "Slider Name"
+
+local bigSliderBar = Instance.new("Frame", bigSliderContainer)
+bigSliderBar.Size = UDim2.new(1, -40, 0, 16)
+bigSliderBar.Position = UDim2.new(0, 20, 0, 60)
+bigSliderBar.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+bigSliderBar.BorderSizePixel = 0
+bigSliderBar.ZIndex = 202
+local bsBarCorner = Instance.new("UICorner", bigSliderBar)
+bsBarCorner.CornerRadius = UDim.new(1, 0)
+addProfessionalStroke(bigSliderBar)
+
+local bigSliderFill = Instance.new("Frame", bigSliderBar)
+bigSliderFill.Size = UDim2.new(0, 0, 1, 0)
+bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
+bigSliderFill.BorderSizePixel = 0
+bigSliderFill.ZIndex = 203
+local bsFillCorner = Instance.new("UICorner", bigSliderFill)
+bsFillCorner.CornerRadius = UDim.new(1, 0)
+
+local bigSliderButton = Instance.new("TextButton", bigSliderBar)
+bigSliderButton.Size = UDim2.fromScale(1, 1)
+bigSliderButton.BackgroundTransparency = 1
+bigSliderButton.Text = ""
+bigSliderButton.ZIndex = 204
+
+local cursorSpeedLabel = Instance.new("TextLabel", bigSliderOverlay)
+cursorSpeedLabel.Size = UDim2.fromOffset(100, 24)
+cursorSpeedLabel.BackgroundTransparency = 0.3
+cursorSpeedLabel.BackgroundColor3 = customUiConfig.textBgColor
+cursorSpeedLabel.TextColor3 = customUiConfig.textColor
+cursorSpeedLabel.Font = Enum.Font.GothamBold
+cursorSpeedLabel.TextSize = 13
+cursorSpeedLabel.Text = "0.0"
+cursorSpeedLabel.Visible = false
+cursorSpeedLabel.ZIndex = 210
+local cslCorner = Instance.new("UICorner", cursorSpeedLabel)
+cslCorner.CornerRadius = UDim.new(0, 4)
+addProfessionalStroke(cursorSpeedLabel)
+
+local popupOverlay = Instance.new("Frame", gui)
+popupOverlay.Size = UDim2.fromScale(1, 1)
+popupOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+popupOverlay.BackgroundTransparency = 0.6
+popupOverlay.Visible = false
+popupOverlay.ZIndex = 10
+
+local modalFrame = Instance.new("Frame", popupOverlay)
+modalFrame.Size = UDim2.fromOffset(300, 330)
+modalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+modalFrame.Position = UDim2.fromScale(0.5, 0.5)
+modalFrame.BackgroundColor3 = customUiConfig.bgColor
+modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+modalFrame.BorderSizePixel = 0
+modalFrame.ZIndex = 11
+makeDraggable(modalFrame)
+local modalCorner = Instance.new("UICorner", modalFrame)
+modalCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(modalFrame)
+
+local deleteModalOverlay = Instance.new("Frame", gui)
+deleteModalOverlay.Size = UDim2.fromScale(1, 1)
+deleteModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+deleteModalOverlay.BackgroundTransparency = 0.6
+deleteModalOverlay.Visible = false
+deleteModalOverlay.ZIndex = 40
+
+local deleteModalFrame = Instance.new("Frame", deleteModalOverlay)
+deleteModalFrame.Size = UDim2.fromOffset(280, 160)
+deleteModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+deleteModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+deleteModalFrame.BorderSizePixel = 0
+deleteModalFrame.ZIndex = 41
+makeDraggable(deleteModalFrame)
+local deleteModalCorner = Instance.new("UICorner", deleteModalFrame)
+deleteModalCorner.CornerRadius = UDim.new(0, 12)
+addProfessionalStroke(deleteModalFrame)
+
 local managedTextObjects = {}
+local managedInteractiveButtons = {}
+local managedSliders = {}
+local managedTextBgObjects = {}
+local protectedColorCustomizerButtons = {}
+
+local function protectColorCustomizerButton(button)
+    protectedColorCustomizerButtons[button] = true
+end
+
+protectColorCustomizerButton(colorTriggerBtn)
+
+local say
+local refreshSavesUI
+local tallEnabled = false
+local shortEnabled = false
 
 local function mk(parent, cls, y, h, text)
     local o = Instance.new(cls, parent)
     o.Size = UDim2.fromOffset(230, h)
     o.Position = UDim2.fromOffset(10, y)
-    o.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    o.TextColor3 = Color3.new(1, 1, 1)
-    o.Font = Enum.Font.SourceSansSemibold
+    o.BackgroundColor3 = customUiConfig.textBgColor
+    o.TextColor3 = customUiConfig.textColor
+    o.Font = Enum.Font.GothamSemibold
     o.TextSize = customUiConfig.textSize
     if text then o.Text = text end
     
-    local corner = Instance.new("UICorner")
+    local corner = Instance.new("UICorner", o)
     corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = o
+    addProfessionalStroke(o)
     
     table.insert(managedTextObjects, o)
+    table.insert(managedInteractiveButtons, o)
     return o
 end
 
 local function mkModal(parent, cls, x, y, w, h, text)
-    local o = Instance.new(cls, parent)
+    local o = Instance.new(cls)
     o.Size = UDim2.fromOffset(w, h)
     o.Position = UDim2.fromOffset(x, y)
-    o.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    o.TextColor3 = Color3.new(1, 1, 1)
-    o.Font = Enum.Font.SourceSansSemibold
+    o.BackgroundColor3 = customUiConfig.textBgColor
+    o.TextColor3 = customUiConfig.textColor
+    o.Font = Enum.Font.GothamSemibold
     o.TextSize = customUiConfig.textSize
-    o.ZIndex = 22
+
+    if parent == modalFrame then
+        o.ZIndex = 12
+    elseif parent == deleteModalFrame then
+        o.ZIndex = 42
+    elseif parent == limitModalFrame then
+        o.ZIndex = 72
+    else
+        o.ZIndex = 22
+    end
+
     if text then o.Text = text end
-    
+    o.Parent = parent
+
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = o
-    
+
+    addProfessionalStroke(o)
     table.insert(managedTextObjects, o)
+    table.insert(managedInteractiveButtons, o)
     return o
 end
 
--- === Speedometer Label (Right above Speed Settings) ===
 local speedometerLabel = Instance.new("TextLabel", mainFrame)
 speedometerLabel.Size = UDim2.fromOffset(230, 20)
 speedometerLabel.Position = UDim2.fromOffset(10, 10)
 speedometerLabel.BackgroundTransparency = 1
-speedometerLabel.TextColor3 = Color3.fromRGB(150, 220, 255)
-speedometerLabel.Font = Enum.Font.SourceSansBold
+speedometerLabel.TextColor3 = customUiConfig.textColor
+speedometerLabel.Font = Enum.Font.GothamBold
 speedometerLabel.TextSize = math.max(10, customUiConfig.textSize - 1)
 speedometerLabel.TextXAlignment = Enum.TextXAlignment.Left
 speedometerLabel.Text = "Current Speed: 0.0"
 table.insert(managedTextObjects, speedometerLabel)
 
--- === Speed Settings Header & Collapsible Sliders Container ===
 local speedTitle = Instance.new("TextLabel", mainFrame)
 speedTitle.Size = UDim2.fromOffset(120, 24)
 speedTitle.Position = UDim2.fromOffset(10, 35)
 speedTitle.BackgroundTransparency = 1
-speedTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
-speedTitle.Font = Enum.Font.SourceSansBold
+speedTitle.TextColor3 = customUiConfig.textColor
+speedTitle.Font = Enum.Font.GothamBold
 speedTitle.TextSize = math.max(10, customUiConfig.textSize - 1)
 speedTitle.TextXAlignment = Enum.TextXAlignment.Left
 speedTitle.Text = "Speed Settings"
 table.insert(managedTextObjects, speedTitle)
 
-makeDraggable(mainFrame, speedTitle)
-
 local minimizeBtn = Instance.new("TextButton", mainFrame)
 minimizeBtn.Size = UDim2.fromOffset(50, 24)
 minimizeBtn.Position = UDim2.fromOffset(140, 35)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
-minimizeBtn.Font = Enum.Font.SourceSansSemibold
+minimizeBtn.BackgroundColor3 = customUiConfig.textBgColor
+minimizeBtn.TextColor3 = customUiConfig.textColor
+minimizeBtn.Font = Enum.Font.GothamSemibold
 minimizeBtn.TextSize = customUiConfig.textSize
 minimizeBtn.Text = "-"
 table.insert(managedTextObjects, minimizeBtn)
-
+table.insert(managedInteractiveButtons, minimizeBtn)
 local minCorner = Instance.new("UICorner", minimizeBtn)
-minCorner.CornerRadius = UDim.new(0, 4)
+minCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(minimizeBtn)
 
--- Options Button (Top Right of Main Frame)
 local optionsBtn = Instance.new("TextButton", mainFrame)
 optionsBtn.Size = UDim2.fromOffset(24, 24)
 optionsBtn.Position = UDim2.fromOffset(216, 35)
-optionsBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-optionsBtn.TextColor3 = Color3.new(1, 1, 1)
-optionsBtn.Font = Enum.Font.SourceSansBold
+optionsBtn.BackgroundColor3 = customUiConfig.textBgColor
+optionsBtn.TextColor3 = customUiConfig.textColor
+optionsBtn.Font = Enum.Font.GothamBold
 optionsBtn.TextSize = customUiConfig.textSize
 optionsBtn.Text = "⚙"
 table.insert(managedTextObjects, optionsBtn)
-
+table.insert(managedInteractiveButtons, optionsBtn)
 local optCorner = Instance.new("UICorner", optionsBtn)
-optCorner.CornerRadius = UDim.new(0, 4)
-
--- === Options Menu Popout Layout ===
-local optTitle = Instance.new("TextLabel", optionsModalFrame)
-optTitle.Size = UDim2.fromOffset(260, 24)
-optTitle.Position = UDim2.fromOffset(20, 15)
-optTitle.BackgroundTransparency = 1
-optTitle.TextColor3 = Color3.new(1, 1, 1)
-optTitle.Font = Enum.Font.SourceSansBold
-optTitle.TextSize = 16
-optTitle.ZIndex = 52
-optTitle.Text = "UI Options Menu"
-
-local optCloseBtn = Instance.new("TextButton", optionsModalFrame)
-optCloseBtn.Size = UDim2.fromOffset(260, 36)
-optCloseBtn.Position = UDim2.fromOffset(20, 225)
-optCloseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-optCloseBtn.TextColor3 = Color3.new(1, 1, 1)
-optCloseBtn.Font = Enum.Font.SourceSansSemibold
-optCloseBtn.TextSize = 14
-optCloseBtn.ZIndex = 52
-optCloseBtn.Text = "Close"
-local ocCorner = Instance.new("UICorner", optCloseBtn)
-ocCorner.CornerRadius = UDim.new(0, 6)
-
--- Refresh UI Theme and Scale dynamically
-local function updateUiThemeAndScale()
-    mainFrame.BackgroundColor3 = customUiConfig.bgColor
-    mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    savesFrame.BackgroundColor3 = customUiConfig.bgColor
-    savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
-    optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    colorModalFrame.BackgroundColor3 = customUiConfig.bgColor
-    colorModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    modalFrame.BackgroundColor3 = customUiConfig.bgColor
-    modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
-    deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    speedModalFrame.BackgroundColor3 = customUiConfig.bgColor
-    speedModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-    precisionContainer.BackgroundColor3 = customUiConfig.bgColor
-    precisionContainer.BackgroundTransparency = customUiConfig.bgTransparency
-
-    mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
-    for _, obj in ipairs(managedTextObjects) do
-        if obj and obj.Parent then
-            if obj ~= speedometerLabel and obj ~= speedTitle then
-                obj.TextSize = customUiConfig.textSize
-            end
-        end
-    end
-end
-
--- Helper to create option sliders in the options popup
-local function createOptionSlider(yPos, labelText, minVal, maxVal, currentVal, callback)
-    local lbl = Instance.new("TextLabel", optionsModalFrame)
-    lbl.Size = UDim2.fromOffset(260, 16)
-    lbl.Position = UDim2.fromOffset(20, yPos)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = Color3.new(1, 1, 1)
-    lbl.Font = Enum.Font.SourceSansBold
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 52
-    lbl.Text = labelText .. ": " .. tostring(currentVal)
-
-    local bar = Instance.new("Frame", optionsModalFrame)
-    bar.Size = UDim2.fromOffset(260, 10)
-    bar.Position = UDim2.fromOffset(20, yPos + 18)
-    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    bar.BorderSizePixel = 0
-    bar.ZIndex = 52
-    local bc = Instance.new("UICorner", bar)
-    bc.CornerRadius = UDim.new(1, 0)
-
-    local fill = Instance.new("Frame", bar)
-    local initialRatio = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
-    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
-    fill.BorderSizePixel = 0
-    fill.ZIndex = 53
-    local fc = Instance.new("UICorner", fill)
-    fc.CornerRadius = UDim.new(1, 0)
-
-    local btn = Instance.new("TextButton", bar)
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.ZIndex = 54
-
-    local dragging = false
-    btn.MouseButton1Down:Connect(function() dragging = true end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local mouseX = UserInputService:GetMouseLocation().X
-            local barPos = bar.AbsolutePosition.X
-            local barSize = bar.AbsoluteSize.X
-            local ratio = math.clamp((mouseX - barPos) / barSize, 0, 1)
-            local val = minVal + ratio * (maxVal - minVal)
-            if maxVal > 10 then val = math.round(val) else val = math.floor(val * 100 + 0.5) / 100 end
-            fill.Size = UDim2.new(ratio, 0, 1, 0)
-            lbl.Text = labelText .. ": " .. tostring(val)
-            callback(val)
-        end
-    end)
-end
-
-createOptionSlider(50, "GUI Height", 250, 600, customUiConfig.height, function(v)
-    customUiConfig.height = v
-    updateUiThemeAndScale()
-    saveSavesToFile()
-end)
-
-createOptionSlider(95, "Text Size", 10, 24, customUiConfig.textSize, function(v)
-    customUiConfig.textSize = v
-    updateUiThemeAndScale()
-    saveSavesToFile()
-end)
-
-createOptionSlider(140, "Transparency", 0, 0.95, customUiConfig.bgTransparency, function(v)
-    customUiConfig.bgTransparency = v
-    updateUiThemeAndScale()
-    saveSavesToFile()
-end)
-
-local colorPickerBtn = Instance.new("TextButton", optionsModalFrame)
-colorPickerBtn.Size = UDim2.fromOffset(260, 30)
-colorPickerBtn.Position = UDim2.fromOffset(20, 185)
-colorPickerBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-colorPickerBtn.TextColor3 = Color3.new(1, 1, 1)
-colorPickerBtn.Font = Enum.Font.SourceSansSemibold
-colorPickerBtn.TextSize = 13
-colorPickerBtn.ZIndex = 52
-colorPickerBtn.Text = "Customize Background Color..."
-local cpCorner = Instance.new("UICorner", colorPickerBtn)
-cpCorner.CornerRadius = UDim.new(0, 6)
-
--- === Color Picker Sub-Popout Layout ===
-local cpTitle = Instance.new("TextLabel", colorModalFrame)
-cpTitle.Size = UDim2.fromOffset(280, 24)
-cpTitle.Position = UDim2.fromOffset(20, 15)
-cpTitle.BackgroundTransparency = 1
-cpTitle.TextColor3 = Color3.new(1, 1, 1)
-cpTitle.Font = Enum.Font.SourceSansBold
-cpTitle.TextSize = 16
-cpTitle.ZIndex = 72
-cpTitle.Text = "A Most Excellent Color Picker"
-
-local colorPreviewBox = Instance.new("Frame", colorModalFrame)
-colorPreviewBox.Size = UDim2.fromOffset(60, 60)
-colorPreviewBox.Position = UDim2.fromOffset(20, 50)
-colorPreviewBox.BackgroundColor3 = customUiConfig.bgColor
-colorPreviewBox.BorderSizePixel = 0
-colorPreviewBox.ZIndex = 72
-local cpbCorner = Instance.new("UICorner", colorPreviewBox)
-cpbCorner.CornerRadius = UDim.new(0, 8)
-
-local hexLabel = Instance.new("TextLabel", colorModalFrame)
-hexLabel.Size = UDim2.fromOffset(200, 30)
-hexLabel.Position = UDim2.fromOffset(90, 65)
-hexLabel.BackgroundTransparency = 1
-hexLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-hexLabel.Font = Enum.Font.SourceSansBold
-hexLabel.TextSize = 14
-hexLabel.TextXAlignment = Enum.TextXAlignment.Left
-hexLabel.ZIndex = 72
-hexLabel.Text = "#191919"
-
-local function createColorSlider(yPos, labelText, currentVal, callback)
-    local lbl = Instance.new("TextLabel", colorModalFrame)
-    lbl.Size = UDim2.fromOffset(280, 16)
-    lbl.Position = UDim2.fromOffset(20, yPos)
-    lbl.BackgroundTransparency = 1
-    lbl.TextColor3 = Color3.new(1, 1, 1)
-    lbl.Font = Enum.Font.SourceSansBold
-    lbl.TextSize = 12
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.ZIndex = 72
-    lbl.Text = labelText .. ": " .. tostring(currentVal)
-
-    local bar = Instance.new("Frame", colorModalFrame)
-    bar.Size = UDim2.fromOffset(280, 12)
-    bar.Position = UDim2.fromOffset(20, yPos + 18)
-    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    bar.BorderSizePixel = 0
-    bar.ZIndex = 72
-    local bc = Instance.new("UICorner", bar)
-    bc.CornerRadius = UDim.new(1, 0)
-
-    local fill = Instance.new("Frame", bar)
-    local initialRatio = math.clamp(currentVal / 255, 0, 1)
-    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
-    fill.BackgroundColor3 = Color3.fromRGB(255, 100, 200)
-    fill.BorderSizePixel = 0
-    fill.ZIndex = 73
-    local fc = Instance.new("UICorner", fill)
-    fc.CornerRadius = UDim.new(1, 0)
-
-    local btn = Instance.new("TextButton", bar)
-    btn.Size = UDim2.new(1, 0, 1, 0)
-    btn.BackgroundTransparency = 1
-    btn.Text = ""
-    btn.ZIndex = 74
-
-    local dragging = false
-    btn.MouseButton1Down:Connect(function() dragging = true end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local mouseX = UserInputService:GetMouseLocation().X
-            local barPos = bar.AbsolutePosition.X
-            local barSize = bar.AbsoluteSize.X
-            local ratio = math.clamp((mouseX - barPos) / barSize, 0, 1)
-            local val = math.round(ratio * 255)
-            fill.Size = UDim2.new(ratio, 0, 1, 0)
-            lbl.Text = labelText .. ": " .. tostring(val)
-            callback(val)
-        end
-    end)
-end
-
-local function updateColorPreviewAndTheme()
-    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
-    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
-    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
-    colorPreviewBox.BackgroundColor3 = customUiConfig.bgColor
-    hexLabel.Text = string.format("#%02x%02x%02x", r, g, b)
-    updateUiThemeAndScale()
-    saveSavesToFile()
-end
-
-createColorSlider(120, "Red", math.floor(customUiConfig.bgColor.R * 255 + 0.5), function(v)
-    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
-    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(v, g, b)
-    updateColorPreviewAndTheme()
-end)
-
-createColorSlider(165, "Green", math.floor(customUiConfig.bgColor.G * 255 + 0.5), function(v)
-    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
-    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(r, v, b)
-    updateColorPreviewAndTheme()
-end)
-
-createColorSlider(210, "Blue", math.floor(customUiConfig.bgColor.B * 255 + 0.5), function(v)
-    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
-    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
-    customUiConfig.bgColor = Color3.fromRGB(r, g, v)
-    updateColorPreviewAndTheme()
-end)
-
-local colorCloseBtn = Instance.new("TextButton", colorModalFrame)
-colorCloseBtn.Size = UDim2.fromOffset(280, 30)
-colorCloseBtn.Position = UDim2.fromOffset(20, 250)
-colorCloseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-colorCloseBtn.TextColor3 = Color3.new(1, 1, 1)
-colorCloseBtn.Font = Enum.Font.SourceSansSemibold
-colorCloseBtn.TextSize = 13
-colorCloseBtn.ZIndex = 72
-colorCloseBtn.Text = "Back to Options"
-local ccCorner = Instance.new("UICorner", colorCloseBtn)
-ccCorner.CornerRadius = UDim.new(0, 6)
-
-optionsBtn.MouseButton1Click:Connect(function()
-    optionsModalOverlay.Visible = true
-end)
-
-optCloseBtn.MouseButton1Click:Connect(function()
-    optionsModalOverlay.Visible = false
-end)
-
-colorPickerBtn.MouseButton1Click:Connect(function()
-    updateColorPreviewAndTheme()
-    colorModalOverlay.Visible = true
-end)
-
-colorCloseBtn.MouseButton1Click:Connect(function()
-    colorModalOverlay.Visible = false
-end)
-
-local sliderContainer = Instance.new("Frame", mainFrame)
-sliderContainer.Size = UDim2.fromOffset(230, 90)
-sliderContainer.Position = UDim2.fromOffset(10, 63)
-sliderContainer.BackgroundTransparency = 1
+optCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(optionsBtn)
 
 local box = mk(mainFrame, "TextBox", 163, 32)
 box.PlaceholderText = "Animation ID"
@@ -818,11 +601,16 @@ status.TextWrapped = true
 status.TextColor3 = Color3.fromRGB(255, 200, 60)
 status.Text = "Status: Ready"
 
+local sliderContainerParent = Instance.new("Frame", mainFrame)
+sliderContainerParent.Size = UDim2.fromOffset(230, 90)
+sliderContainerParent.Position = UDim2.fromOffset(10, 63)
+sliderContainerParent.BackgroundTransparency = 1
+
 local isSpeedMinimized = false
 local function setSpeedMinimized(state)
     isSpeedMinimized = state
     minimizeBtn.Text = isSpeedMinimized and "+" or "-"
-    sliderContainer.Visible = not isSpeedMinimized
+    if sliderContainerParent then sliderContainerParent.Visible = not isSpeedMinimized end
     
     if isSpeedMinimized then
         mainFrame.Size = UDim2.fromOffset(250, 316)
@@ -847,227 +635,870 @@ minimizeBtn.MouseButton1Click:Connect(function()
     setSpeedMinimized(not isSpeedMinimized)
 end)
 
-local updateWalkSpeedSlider, updateAnimSpeedSlider = nil, nil
-local humanoid, animator, rootPart = nil, nil, nil
-local isGameAntiCheatActive = false
+local optTitle = Instance.new("TextLabel", optionsModalFrame)
+optTitle.Size = UDim2.fromOffset(340, 24)
+optTitle.Position = UDim2.fromOffset(20, 15)
+optTitle.BackgroundTransparency = 1
+optTitle.TextColor3 = customUiConfig.textColor
+optTitle.Font = Enum.Font.GothamBold
+optTitle.TextSize = 16
+optTitle.ZIndex = 52
+optTitle.Text = "UI Options Menu"
+table.insert(managedTextObjects, optTitle)
 
--- Speed Editor Popup Elements
-local speedModalTitle = Instance.new("TextLabel", speedModalFrame)
-speedModalTitle.Size = UDim2.fromOffset(240, 24)
-speedModalTitle.Position = UDim2.fromOffset(20, 15)
-speedModalTitle.BackgroundTransparency = 1
-speedModalTitle.TextColor3 = Color3.new(1, 1, 1)
-speedModalTitle.Font = Enum.Font.SourceSansBold
-speedModalTitle.TextSize = 16
-speedModalTitle.Text = "Edit Speed"
-speedModalTitle.ZIndex = 22
-table.insert(managedTextObjects, speedModalTitle)
+local optCloseBtn = Instance.new("TextButton", optionsModalFrame)
+optCloseBtn.Size = UDim2.fromOffset(205, 32)
+optCloseBtn.Position = UDim2.fromOffset(88, 205)
+optCloseBtn.BackgroundColor3 = customUiConfig.textBgColor
+optCloseBtn.TextColor3 = customUiConfig.textColor
+optCloseBtn.Font = Enum.Font.GothamSemibold
+optCloseBtn.TextSize = 14
+optCloseBtn.ZIndex = 52
+optCloseBtn.Text = "Close"
+table.insert(managedTextObjects, optCloseBtn)
+table.insert(managedInteractiveButtons, optCloseBtn)
+local ocCorner = Instance.new("UICorner", optCloseBtn)
+ocCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(optCloseBtn)
 
-local smValBox = mkModal(speedModalFrame, "TextBox", 20, 48, 240, 28)
-smValBox.PlaceholderText = "Manual Speed Value"
-smValBox.Text = ""
-smValBox.ClearTextOnFocus = false
+local uiSlotsTriggerBtn = Instance.new("TextButton", optionsModalFrame)
+uiSlotsTriggerBtn.Size = UDim2.fromOffset(45, 32)
+uiSlotsTriggerBtn.Position = UDim2.fromOffset(320, 205)
+uiSlotsTriggerBtn.BackgroundColor3 = customUiConfig.textBgColor
+uiSlotsTriggerBtn.TextColor3 = customUiConfig.textColor
+uiSlotsTriggerBtn.Font = Enum.Font.GothamBold
+uiSlotsTriggerBtn.TextSize = 14
+uiSlotsTriggerBtn.ZIndex = 52
+uiSlotsTriggerBtn.Text = "▼"
+protectColorCustomizerButton(uiSlotsTriggerBtn)
+table.insert(managedTextObjects, uiSlotsTriggerBtn)
+table.insert(managedInteractiveButtons, uiSlotsTriggerBtn)
+local ustCorner = Instance.new("UICorner", uiSlotsTriggerBtn)
+ustCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(uiSlotsTriggerBtn)
 
-local smMinBox = mkModal(speedModalFrame, "TextBox", 20, 84, 240, 28)
-smMinBox.PlaceholderText = "Minimum Slider Limit"
-smMinBox.Text = ""
-smMinBox.ClearTextOnFocus = false
+local function updateUiThemeAndScale()
+    mainFrame.BackgroundColor3 = customUiConfig.bgColor
+    mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    savesFrame.BackgroundColor3 = customUiConfig.bgColor
+    savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    hoverColorPanel.BackgroundColor3 = customUiConfig.bgColor
+    hoverColorPanel.BackgroundTransparency = customUiConfig.bgTransparency
+    hoverUiSlotsPanel.BackgroundColor3 = customUiConfig.bgColor
+    hoverUiSlotsPanel.BackgroundTransparency = customUiConfig.bgTransparency
+    modalFrame.BackgroundColor3 = customUiConfig.bgColor
+    modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
+    bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
 
-local smMaxBox = mkModal(speedModalFrame, "TextBox", 20, 120, 240, 28)
-smMaxBox.PlaceholderText = "Maximum Slider Limit"
-smMaxBox.Text = ""
-smMaxBox.ClearTextOnFocus = false
+    mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
 
-local smConfirmBtn = mkModal(speedModalFrame, "TextButton", 20, 162, 110, 36, "Apply")
-local smCancelBtn = mkModal(speedModalFrame, "TextButton", 150, 162, 110, 36, "Cancel")
-
-local activeEditingType = nil
-
-local function openSpeedModal(typeStr)
-    activeEditingType = typeStr
-    if typeStr == "WalkSpeed" then
-        speedModalTitle.Text = "Edit WalkSpeed"
-        smValBox.Text = tostring(currentWalkSpeed)
-        smMinBox.Text = tostring(minWalkSpeedLimit)
-        smMaxBox.Text = tostring(maxWalkSpeedLimit)
-    else
-        speedModalTitle.Text = "Edit Animation Speed"
-        smValBox.Text = tostring(currentAnimMultiplier)
-        smMinBox.Text = tostring(minAnimSpeedLimit)
-        smMaxBox.Text = tostring(maxAnimSpeedLimit)
+    for _, obj in ipairs(managedTextObjects) do
+        if obj and obj.Parent and not protectedColorCustomizerButtons[obj] then
+            if obj ~= speedometerLabel and obj ~= speedTitle then
+                obj.TextSize = customUiConfig.textSize
+            end
+            obj.TextColor3 = customUiConfig.textColor
+        end
     end
-    
-    speedModalOverlay.Visible = true
-    speedModalFrame.Size = UDim2.fromOffset(0, 0)
-    TweenService:Create(speedModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.fromOffset(280, 250)
+
+    for _, btnObj in ipairs(managedInteractiveButtons) do
+        if btnObj and btnObj.Parent and not protectedColorCustomizerButtons[btnObj] then
+            btnObj.BackgroundColor3 = customUiConfig.textBgColor
+        end
+    end
+
+    for _, s in ipairs(managedSliders) do
+        if s and s.Parent then
+            s.BackgroundColor3 = customUiConfig.sliderColor
+        end
+    end
+    if bigSliderFill then
+        bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
+    end
+end
+
+local function createOptionSlider(yPos, labelText, minVal, maxVal, defaultVal, currentVal, callback)
+    local lbl = Instance.new("TextLabel", optionsModalFrame)
+    lbl.Size = UDim2.fromOffset(260, 16)
+    lbl.Position = UDim2.fromOffset(20, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = customUiConfig.textColor
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 52
+    lbl.Text = labelText .. ": " .. string.format("%.1f", currentVal)
+    table.insert(managedTextObjects, lbl)
+
+    local defBtn = Instance.new("TextButton", optionsModalFrame)
+    defBtn.Size = UDim2.fromOffset(65, 18)
+    defBtn.Position = UDim2.fromOffset(295, yPos - 2)
+    defBtn.BackgroundColor3 = customUiConfig.textBgColor
+    defBtn.TextColor3 = customUiConfig.textColor
+    defBtn.Font = Enum.Font.GothamSemibold
+    defBtn.TextSize = 10
+    defBtn.ZIndex = 52
+    defBtn.Text = "Default"
+    table.insert(managedTextObjects, defBtn)
+    table.insert(managedInteractiveButtons, defBtn)
+    local dbCorner = Instance.new("UICorner", defBtn)
+    dbCorner.CornerRadius = UDim.new(0, 4)
+    addProfessionalStroke(defBtn)
+
+    local bar = Instance.new("Frame", optionsModalFrame)
+    bar.Size = UDim2.fromOffset(340, 10)
+    bar.Position = UDim2.fromOffset(20, yPos + 18)
+    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    bar.BorderSizePixel = 0
+    bar.ZIndex = 52
+    local bc = Instance.new("UICorner", bar)
+    bc.CornerRadius = UDim.new(1, 0)
+    addProfessionalStroke(bar)
+
+    local fill = Instance.new("Frame", bar)
+    local initialRatio = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
+    fill.Size = UDim2.new(initialRatio, 0, 1, 0)
+    fill.BackgroundColor3 = customUiConfig.sliderColor
+    fill.BorderSizePixel = 0
+    fill.ZIndex = 53
+    table.insert(managedSliders, fill)
+    local fc = Instance.new("UICorner", fill)
+    fc.CornerRadius = UDim.new(1, 0)
+
+    local btn = Instance.new("TextButton", bar)
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.ZIndex = 54
+
+    local function applyVal(val)
+        val = math.clamp(math.round(val * 10) / 10, minVal, maxVal)
+        local ratio = math.clamp((val - minVal) / (maxVal - minVal), 0, 1)
+        fill.Size = UDim2.new(ratio, 0, 1, 0)
+        lbl.Text = labelText .. ": " .. string.format("%.1f", val)
+        callback(val)
+    end
+
+    defBtn.MouseButton1Click:Connect(function()
+        applyVal(defaultVal)
+    end)
+
+    local dragging = false
+    btn.MouseButton1Down:Connect(function() dragging = true end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        local isMouseInput = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchInput = input.UserInputType == Enum.UserInputType.Touch
+        if not isMouseInput and not isTouchInput then return end
+
+        local pointerX = isTouchInput and input.Position.X or UserInputService:GetMouseLocation().X
+        local barPos = bar.AbsolutePosition.X
+        local barSize = bar.AbsoluteSize.X
+        if barSize <= 0 then return end
+
+        local ratio = math.clamp((pointerX - barPos) / barSize, 0, 1)
+        local val = minVal + ratio * (maxVal - minVal)
+        applyVal(val)
+    end)
+end
+
+createOptionSlider(45, "GUI Height", 250, 600, 415, customUiConfig.height, function(v)
+    customUiConfig.height = math.round(v)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+createOptionSlider(90, "Text Size", 10, 24, 14, customUiConfig.textSize, function(v)
+    customUiConfig.textSize = math.round(v)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+createOptionSlider(135, "Transparency", 0, 0.95, 0.05, customUiConfig.bgTransparency, function(v)
+    customUiConfig.bgTransparency = v
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+local ccTitle = Instance.new("TextLabel", hoverColorPanel)
+ccTitle.Size = UDim2.fromOffset(340, 24)
+ccTitle.Position = UDim2.fromOffset(20, 10)
+ccTitle.BackgroundTransparency = 1
+ccTitle.TextColor3 = customUiConfig.textColor
+ccTitle.Font = Enum.Font.GothamBold
+ccTitle.TextSize = 15
+ccTitle.ZIndex = 56
+ccTitle.Text = "Advanced Color Customizer"
+table.insert(managedTextObjects, ccTitle)
+
+local currentSelectedTarget = "background"
+local targetButtons = {}
+
+local COLOR_CUSTOMIZER_BUTTON_BG = Color3.fromRGB(32, 32, 36)
+local COLOR_CUSTOMIZER_BUTTON_SELECTED = Color3.fromRGB(15, 15, 18)
+local COLOR_CUSTOMIZER_BUTTON_TEXT = Color3.fromRGB(255, 255, 255)
+
+local function updateTargetButtonStyle(tBtn, selected)
+    tBtn.TextColor3 = COLOR_CUSTOMIZER_BUTTON_TEXT
+
+    if selected then
+        tBtn.BackgroundColor3 = COLOR_CUSTOMIZER_BUTTON_SELECTED
+
+        if not tBtn:FindFirstChild("NeonGlow") then
+            local stroke = Instance.new("UIStroke")
+            stroke.Name = "NeonGlow"
+            stroke.Color = Color3.fromRGB(255, 255, 255)
+            stroke.Transparency = 0
+            stroke.Thickness = 2
+            stroke.Parent = tBtn
+        end
+    else
+        tBtn.BackgroundColor3 = COLOR_CUSTOMIZER_BUTTON_BG
+
+        local stroke = tBtn:FindFirstChild("NeonGlow")
+        if stroke then
+            stroke:Destroy()
+        end
+    end
+end
+
+local function createTargetToggle(x, text, key)
+    local tBtn = Instance.new("TextButton", hoverColorPanel)
+    tBtn.Size = UDim2.fromOffset(80, 26)
+    tBtn.Position = UDim2.fromOffset(x, 40)
+    tBtn.TextColor3 = customUiConfig.textColor
+    tBtn.Font = Enum.Font.GothamSemibold
+    tBtn.TextSize = 11
+    tBtn.ZIndex = 56
+    tBtn.Text = text
+
+    protectColorCustomizerButton(tBtn)
+
+    table.insert(managedTextObjects, tBtn)
+    table.insert(managedTextBgObjects, tBtn)
+
+    local c = Instance.new("UICorner", tBtn)
+    c.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(tBtn)
+
+    updateTargetButtonStyle(tBtn, currentSelectedTarget == key)
+
+    tBtn.MouseButton1Click:Connect(function()
+        currentSelectedTarget = key
+        for targetKey, btnObj in pairs(targetButtons) do
+            updateTargetButtonStyle(btnObj, targetKey == currentSelectedTarget)
+        end
+    end)
+
+    targetButtons[key] = tBtn
+end
+
+createTargetToggle(20, "Background", "background")
+createTargetToggle(105, "Text", "text")
+createTargetToggle(190, "TextBg", "textBg")
+createTargetToggle(275, "Sliders", "slider")
+
+local wheelContainer = Instance.new("Frame", hoverColorPanel)
+wheelContainer.Size = UDim2.fromOffset(130, 130)
+wheelContainer.Position = UDim2.fromOffset(20, 75)
+wheelContainer.BackgroundTransparency = 1
+wheelContainer.ClipsDescendants = false
+wheelContainer.ZIndex = 56
+
+local wheelMask = Instance.new("Frame", wheelContainer)
+wheelMask.Size = UDim2.fromScale(1, 1)
+wheelMask.BackgroundTransparency = 1
+wheelMask.ClipsDescendants = true
+wheelMask.ZIndex = 56
+local wmCorner = Instance.new("UICorner", wheelMask)
+wmCorner.CornerRadius = UDim.new(1, 0)
+
+local wheelImage = Instance.new("ImageLabel", wheelMask)
+wheelImage.Size = UDim2.fromScale(1, -1)
+wheelImage.AnchorPoint = Vector2.new(0.5, 0.5)
+wheelImage.Position = UDim2.fromScale(0.5, 0.5)
+wheelImage.Image = "rbxassetid://6020299385"
+wheelImage.BackgroundTransparency = 1
+wheelImage.BorderSizePixel = 0
+wheelImage.ZIndex = 56
+local wiCorner = Instance.new("UICorner", wheelImage)
+wiCorner.CornerRadius = UDim.new(1, 0)
+addProfessionalStroke(wheelImage)
+
+local aspectConstraint = Instance.new("UIAspectRatioConstraint", wheelImage)
+aspectConstraint.AspectRatio = 1
+
+local crosshair = Instance.new("TextLabel", wheelContainer)
+crosshair.Size = UDim2.fromOffset(16, 16)
+crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
+crosshair.Position = UDim2.fromScale(0.5, 0.5)
+crosshair.BackgroundTransparency = 1
+crosshair.TextColor3 = Color3.fromRGB(255, 255, 255)
+crosshair.Font = Enum.Font.GothamBold
+crosshair.TextSize = 14
+crosshair.ZIndex = 58
+crosshair.Text = "⊕"
+
+local valBar = Instance.new("Frame", hoverColorPanel)
+valBar.Size = UDim2.fromOffset(20, 130)
+valBar.Position = UDim2.fromOffset(165, 75)
+valBar.BackgroundColor3 = Color3.new(1, 1, 1)
+valBar.BorderSizePixel = 0
+valBar.ZIndex = 56
+local vbCorner = Instance.new("UICorner", valBar)
+vbCorner.CornerRadius = UDim.new(0, 4)
+addProfessionalStroke(valBar)
+
+local valGradient = Instance.new("UIGradient", valBar)
+valGradient.Rotation = 90
+
+local valKnob = Instance.new("Frame", valBar)
+valKnob.Size = UDim2.new(1, 6, 0, 8)
+valKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+valKnob.Position = UDim2.new(0.5, 0, 0, 0)
+valKnob.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+valKnob.BorderSizePixel = 0
+valKnob.ZIndex = 58
+local vkCorner = Instance.new("UICorner", valKnob)
+vkCorner.CornerRadius = UDim.new(1, 0)
+addProfessionalStroke(valKnob)
+
+local currentHue, currentSat, currentVal = 0, 0.5, 0.5
+
+local function updateValGradient()
+    local topColor = Color3.fromHSV(currentHue, currentSat, 1)
+    local botColor = Color3.new(0, 0, 0)
+    valGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, topColor),
+        ColorSequenceKeypoint.new(1, botColor)
+    })
+end
+updateValGradient()
+
+local defaultThemeBtn = Instance.new("TextButton", hoverColorPanel)
+defaultThemeBtn.Size = UDim2.fromOffset(65, 24)
+defaultThemeBtn.Position = UDim2.fromOffset(290, 185)
+defaultThemeBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 36)
+defaultThemeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+defaultThemeBtn.Font = Enum.Font.GothamSemibold
+defaultThemeBtn.TextSize = 11
+defaultThemeBtn.ZIndex = 56
+defaultThemeBtn.Text = "Default"
+
+protectColorCustomizerButton(defaultThemeBtn)
+
+table.insert(managedTextObjects, defaultThemeBtn)
+table.insert(managedInteractiveButtons, defaultThemeBtn)
+local dtbCorner = Instance.new("UICorner", defaultThemeBtn)
+dtbCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(defaultThemeBtn)
+
+defaultThemeBtn.MouseButton1Click:Connect(function()
+    customUiConfig.height = 415
+    customUiConfig.textSize = 14
+    customUiConfig.bgColor = Color3.fromRGB(22, 22, 25)
+    customUiConfig.textColor = Color3.fromRGB(255, 255, 255)
+    customUiConfig.textBgColor = Color3.fromRGB(32, 32, 36)
+    customUiConfig.sliderColor = Color3.fromRGB(255, 120, 200)
+    customUiConfig.bgTransparency = 0.05
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+local uiSlotsTitle = Instance.new("TextLabel", hoverUiSlotsPanel)
+uiSlotsTitle.Size = UDim2.fromOffset(340, 24)
+uiSlotsTitle.Position = UDim2.fromOffset(20, 10)
+uiSlotsTitle.BackgroundTransparency = 1
+uiSlotsTitle.TextColor3 = customUiConfig.textColor
+uiSlotsTitle.Font = Enum.Font.GothamBold
+uiSlotsTitle.TextSize = 15
+uiSlotsTitle.ZIndex = 56
+uiSlotsTitle.Text = "UI Theme Save Slots"
+table.insert(managedTextObjects, uiSlotsTitle)
+
+local uiSlotNameBox = Instance.new("TextBox", hoverUiSlotsPanel)
+uiSlotNameBox.Size = UDim2.fromOffset(255, 30)
+uiSlotNameBox.Position = UDim2.fromOffset(20, 42)
+uiSlotNameBox.BackgroundColor3 = customUiConfig.textBgColor
+uiSlotNameBox.TextColor3 = customUiConfig.textColor
+uiSlotNameBox.Font = Enum.Font.GothamSemibold
+uiSlotNameBox.TextSize = 13
+uiSlotNameBox.PlaceholderText = "Slot Name..."
+uiSlotNameBox.Text = ""
+uiSlotNameBox.ClearTextOnFocus = false
+uiSlotNameBox.ZIndex = 56
+protectColorCustomizerButton(uiSlotNameBox)
+table.insert(managedTextObjects, uiSlotNameBox)
+table.insert(managedTextBgObjects, uiSlotNameBox)
+local usnbCorner = Instance.new("UICorner", uiSlotNameBox)
+usnbCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(uiSlotNameBox)
+
+local uiSlotSaveBtn = Instance.new("TextButton", hoverUiSlotsPanel)
+uiSlotSaveBtn.Size = UDim2.fromOffset(75, 30)
+uiSlotSaveBtn.Position = UDim2.fromOffset(285, 42)
+uiSlotSaveBtn.BackgroundColor3 = customUiConfig.textBgColor
+uiSlotSaveBtn.TextColor3 = customUiConfig.textColor
+uiSlotSaveBtn.Font = Enum.Font.GothamSemibold
+uiSlotSaveBtn.TextSize = 12
+uiSlotSaveBtn.ZIndex = 56
+uiSlotSaveBtn.Text = "Save"
+protectColorCustomizerButton(uiSlotSaveBtn)
+table.insert(managedTextObjects, uiSlotSaveBtn)
+table.insert(managedInteractiveButtons, uiSlotSaveBtn)
+local ussbCorner = Instance.new("UICorner", uiSlotSaveBtn)
+ussbCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(uiSlotSaveBtn)
+
+local uiSlotScroll = Instance.new("ScrollingFrame", hoverUiSlotsPanel)
+uiSlotScroll.Size = UDim2.fromOffset(340, 128)
+uiSlotScroll.Position = UDim2.fromOffset(20, 80)
+uiSlotScroll.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+uiSlotScroll.BorderSizePixel = 0
+uiSlotScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+uiSlotScroll.ZIndex = 56
+local ussCorner = Instance.new("UICorner", uiSlotScroll)
+ussCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(uiSlotScroll)
+
+local refreshUiSlotsUI
+refreshUiSlotsUI = function()
+    for _, child in ipairs(uiSlotScroll:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    if not saveData.uiSaveSlots then
+        saveData.uiSaveSlots = {}
+    end
+
+    local count = 0
+    for slotName, slotData in pairs(saveData.uiSaveSlots) do
+        count = count + 1
+        local slotBtn = Instance.new("TextButton", uiSlotScroll)
+        slotBtn.Size = UDim2.fromOffset(320, 28)
+        slotBtn.Position = UDim2.fromOffset(10, (count - 1) * 32 + 5)
+        slotBtn.BackgroundColor3 = customUiConfig.textBgColor
+        slotBtn.TextColor3 = customUiConfig.textColor
+        slotBtn.Font = Enum.Font.Gotham
+        slotBtn.TextSize = 12
+        slotBtn.ZIndex = 57
+        slotBtn.Text = slotName
+
+        protectColorCustomizerButton(slotBtn)
+        table.insert(managedTextObjects, slotBtn)
+        table.insert(managedTextBgObjects, slotBtn)
+
+        local sc = Instance.new("UICorner", slotBtn)
+        sc.CornerRadius = UDim.new(0, 6)
+        addProfessionalStroke(slotBtn)
+
+        slotBtn.MouseButton1Click:Connect(function()
+            customUiConfig.height = slotData.height or 415
+            customUiConfig.textSize = slotData.textSize or 14
+            customUiConfig.bgTransparency = slotData.bgTransparency or 0.05
+            
+            local slotBgB = slotData.bgB
+            if slotBgB == nil then slotBgB = 25 end
+            customUiConfig.bgColor = Color3.fromRGB(slotData.bgR or 22, slotData.bgG or 22, slotBgB)
+            
+            customUiConfig.textColor = Color3.fromRGB(slotData.textR or 255, slotData.textG or 255, slotData.textB or 255)
+            
+            local slotTextBgB = slotData.textBgB
+            if slotTextBgB == nil then slotTextBgB = 36 end
+            customUiConfig.textBgColor = Color3.fromRGB(slotData.textBgR or 32, slotData.textBgG or 32, slotTextBgB)
+            
+            customUiConfig.sliderColor = Color3.fromRGB(slotData.sliderR or 255, slotData.sliderG or 120, slotData.sliderB or 200)
+
+            updateUiThemeAndScale()
+            saveSavesToFile()
+            say("Loaded UI theme slot: " .. slotName)
+        end)
+
+        slotBtn.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                saveData.uiSaveSlots[slotName] = nil
+                saveSavesToFile()
+                refreshUiSlotsUI()
+                say("Deleted UI theme slot: " .. slotName)
+            end
+        end)
+    end
+    uiSlotScroll.CanvasSize = UDim2.new(0, 0, 0, count * 32)
+end
+
+uiSlotSaveBtn.MouseButton1Click:Connect(function()
+    local name = uiSlotNameBox.Text
+    if name ~= "" then
+        saveData.uiSaveSlots[name] = {
+            height = customUiConfig.height,
+            textSize = customUiConfig.textSize,
+            bgTransparency = customUiConfig.bgTransparency,
+            bgR = math.floor(customUiConfig.bgColor.R * 255 + 0.5),
+            bgG = math.floor(customUiConfig.bgColor.G * 255 + 0.5),
+            bgB = math.floor(customUiConfig.bgColor.B * 255 + 0.5),
+            textR = math.floor(customUiConfig.textColor.R * 255 + 0.5),
+            textG = math.floor(customUiConfig.textColor.G * 255 + 0.5),
+            textB = math.floor(customUiConfig.textColor.B * 255 + 0.5),
+            textBgR = math.floor(customUiConfig.textBgColor.R * 255 + 0.5),
+            textBgG = math.floor(customUiConfig.textBgColor.G * 255 + 0.5),
+            textBgB = math.floor(customUiConfig.textBgColor.B * 255 + 0.5),
+            sliderR = math.floor(customUiConfig.sliderColor.R * 255 + 0.5),
+            sliderG = math.floor(customUiConfig.sliderColor.G * 255 + 0.5),
+            sliderB = math.floor(customUiConfig.sliderColor.B * 255 + 0.5),
+        }
+        saveSavesToFile()
+        refreshUiSlotsUI()
+        uiSlotNameBox.Text = ""
+        say("Saved UI theme slot successfully!")
+    else
+        say("Error: Enter a slot name.")
+    end
+end)
+
+refreshUiSlotsUI()
+
+local function applyPickedColor(color)
+    if currentSelectedTarget == "background" then customUiConfig.bgColor = color end
+    if currentSelectedTarget == "text" then customUiConfig.textColor = color end
+    if currentSelectedTarget == "textBg" then customUiConfig.textBgColor = color end
+    if currentSelectedTarget == "slider" then customUiConfig.sliderColor = color end
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end
+
+local wheelBtn = Instance.new("TextButton", wheelContainer)
+wheelBtn.Size = UDim2.fromScale(1, 1)
+wheelBtn.BackgroundTransparency = 1
+wheelBtn.Text = ""
+wheelBtn.ZIndex = 59
+
+local wheelDragging = false
+
+local function updateWheelFromMouse()
+    local mousePos = UserInputService:GetMouseLocation()
+    local absPos = wheelContainer.AbsolutePosition
+    local absSize = wheelContainer.AbsoluteSize
+    local center = absPos + absSize / 2
+    local offset = mousePos - center
+    local dist = offset.Magnitude
+    local maxRad = absSize.X / 2
+
+    local clampedOffset = offset
+    if dist > maxRad then
+        clampedOffset = offset.Unit * maxRad
+    end
+
+    local ratio = math.clamp(clampedOffset.Magnitude / maxRad, 0, 1)
+    currentSat = ratio
+    currentHue = (math.atan2(-clampedOffset.Y, clampedOffset.X) / math.pi + 1) / 2
+
+    crosshair.Position = UDim2.new(0.5, clampedOffset.X, 0.5, clampedOffset.Y)
+    updateValGradient()
+    local col = Color3.fromHSV(currentHue, currentSat, currentVal)
+    applyPickedColor(col)
+end
+
+wheelBtn.MouseButton1Down:Connect(function() 
+    wheelDragging = true 
+    updateWheelFromMouse()
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then wheelDragging = false end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if wheelDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        updateWheelFromMouse()
+    end
+end)
+
+local valBtn = Instance.new("TextButton", valBar)
+valBtn.Size = UDim2.fromScale(1, 1)
+valBtn.BackgroundTransparency = 1
+valBtn.Text = ""
+valBtn.ZIndex = 60
+
+local valDragging = false
+valBtn.MouseButton1Down:Connect(function() valDragging = true end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then valDragging = false end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if valDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local mouseY = UserInputService:GetMouseLocation().Y
+        local barPos = valBar.AbsolutePosition.Y
+        local barSize = valBar.AbsoluteSize.Y
+        if barSize <= 0 then return end
+        local ratio = math.clamp((mouseY - barPos) / barSize, 0, 1)
+        currentVal = 1 - ratio
+        valKnob.Position = UDim2.new(0.5, 0, ratio, 0)
+        local col = Color3.fromHSV(currentHue, currentSat, currentVal)
+        applyPickedColor(col)
+    end
+end)
+
+local isColorExpanded = false
+local isUiSlotsExpanded = false
+
+colorTriggerBtn.MouseButton1Click:Connect(function()
+    isColorExpanded = not isColorExpanded
+    isUiSlotsExpanded = false
+    uiSlotsTriggerBtn.Text = "▼"
+    hoverUiSlotsPanel.Visible = false
+    hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+
+    local targetHcpHeight = isColorExpanded and 220 or 0
+    if isColorExpanded then
+        hoverColorPanel.Visible = true
+    end
+
+    local tween = TweenService:Create(
+        hoverColorPanel,
+        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.fromOffset(380, targetHcpHeight) }
+    )
+    tween:Play()
+    colorTriggerBtn.Text = isColorExpanded and "▲" or "▼"
+
+    if not isColorExpanded then
+        tween.Completed:Connect(function()
+            if not isColorExpanded then hoverColorPanel.Visible = false end
+        end)
+    end
+end)
+
+uiSlotsTriggerBtn.MouseButton1Click:Connect(function()
+    isUiSlotsExpanded = not isUiSlotsExpanded
+    isColorExpanded = false
+    colorTriggerBtn.Text = "▼"
+    hoverColorPanel.Visible = false
+    hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+
+    local targetUispHeight = isUiSlotsExpanded and 220 or 0
+    if isUiSlotsExpanded then
+        hoverUiSlotsPanel.Visible = true
+        refreshUiSlotsUI()
+    end
+
+    local tween = TweenService:Create(
+        hoverUiSlotsPanel,
+        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.fromOffset(380, targetUispHeight) }
+    )
+    tween:Play()
+    uiSlotsTriggerBtn.Text = isUiSlotsExpanded and "▲" or "▼"
+
+    if not isUiSlotsExpanded then
+        tween.Completed:Connect(function()
+            if not isUiSlotsExpanded then hoverUiSlotsPanel.Visible = false end
+        end)
+    end
+end)
+
+optionsBtn.MouseButton1Click:Connect(function()
+    optionsModalOverlay.Visible = true
+    optionsModalFrame.Size = UDim2.fromOffset(0, 0)
+
+    isColorExpanded = false
+    colorTriggerBtn.Text = "▼"
+    hoverColorPanel.Visible = false
+    hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+
+    isUiSlotsExpanded = false
+    uiSlotsTriggerBtn.Text = "▼"
+    hoverUiSlotsPanel.Visible = false
+    hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+
+    TweenService:Create(
+        optionsModalFrame,
+        TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+        { Size = UDim2.fromOffset(380, 250) }
+    ):Play()
+end)
+
+optCloseBtn.MouseButton1Click:Connect(function()
+    local tween = TweenService:Create(
+        optionsModalFrame,
+        TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+        { Size = UDim2.fromOffset(0, 0) }
+    )
+    tween:Play()
+
+    tween.Completed:Connect(function()
+        optionsModalOverlay.Visible = false
+        hoverColorPanel.Visible = false
+        hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+        hoverUiSlotsPanel.Visible = false
+        hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+        isColorExpanded = false
+        isUiSlotsExpanded = false
+        colorTriggerBtn.Text = "▼"
+        uiSlotsTriggerBtn.Text = "▼"
+    end)
+end)
+
+local limitModalTitle = Instance.new("TextLabel", limitModalFrame)
+limitModalTitle.Size = UDim2.fromOffset(260, 24)
+limitModalTitle.Position = UDim2.fromOffset(20, 15)
+limitModalTitle.BackgroundTransparency = 1
+limitModalTitle.TextColor3 = customUiConfig.textColor
+limitModalTitle.Font = Enum.Font.GothamBold
+limitModalTitle.TextSize = 16
+limitModalTitle.ZIndex = 72
+limitModalTitle.Text = "Configure Limits"
+table.insert(managedTextObjects, limitModalTitle)
+
+local minLimitBox = mkModal(limitModalFrame, "TextBox", 20, 55, 260, 32)
+minLimitBox.PlaceholderText = "Minimum Limit"
+minLimitBox.Text = ""
+minLimitBox.ClearTextOnFocus = false
+
+local maxLimitBox = mkModal(limitModalFrame, "TextBox", 20, 97, 260, 32)
+maxLimitBox.PlaceholderText = "Maximum Limit"
+maxLimitBox.Text = ""
+maxLimitBox.ClearTextOnFocus = false
+
+local limitSaveBtn = mkModal(limitModalFrame, "TextButton", 20, 150, 120, 36, "Save")
+local limitCancelBtn = mkModal(limitModalFrame, "TextButton", 160, 150, 120, 36, "Cancel")
+limitSaveBtn.ZIndex = 72
+limitCancelBtn.ZIndex = 72
+
+local activeConfiguringSlider = nil
+
+local function openLimitModal(sliderLabelText)
+    activeConfiguringSlider = sliderLabelText
+    if sliderLabelText == "WalkSpeed" then
+        limitModalTitle.Text = "Configure WalkSpeed Limits"
+        minLimitBox.Text = tostring(minWalkSpeedLimit)
+        maxLimitBox.Text = tostring(maxWalkSpeedLimit)
+    else
+        limitModalTitle.Text = "Configure Anim Speed Limits"
+        minLimitBox.Text = tostring(minAnimSpeedLimit)
+        maxLimitBox.Text = tostring(maxAnimSpeedLimit)
+    end
+    limitModalOverlay.Visible = true
+    limitModalFrame.Size = UDim2.fromOffset(0, 0)
+    TweenService:Create(limitModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.fromOffset(300, 220)
     }):Play()
 end
 
-local function closeSpeedModal()
-    local tween = TweenService:Create(speedModalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+local function closeLimitModal()
+    local tween = TweenService:Create(limitModalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
         Size = UDim2.fromOffset(0, 0)
     })
     tween:Play()
     tween.Completed:Connect(function()
-        speedModalOverlay.Visible = false
-        smValBox.Text = ""
-        smMinBox.Text = ""
-        smMaxBox.Text = ""
+        limitModalOverlay.Visible = false
+        activeConfiguringSlider = nil
     end)
 end
 
-smCancelBtn.MouseButton1Click:Connect(closeSpeedModal)
+limitCancelBtn.MouseButton1Click:Connect(closeLimitModal)
 
-local function updateLimitPair(minValue, maxValue, currentMin, currentMax, minimumAllowed)
-    local newMin = tonumber(minValue)
-    local newMax = tonumber(maxValue)
+local updateWalkSpeedSlider, updateAnimSpeedSlider = nil, nil
 
-    if newMin == nil then
-        newMin = currentMin
-    end
-
-    if newMax == nil then
-        newMax = currentMax
-    end
-
-    newMin = math.max(minimumAllowed, newMin)
-    newMax = math.max(newMin, newMax)
-
-    return newMin, newMax
-end
-
-smConfirmBtn.MouseButton1Click:Connect(function()
-    local val = tonumber(smValBox.Text)
-
-    if activeEditingType == "WalkSpeed" then
-        minWalkSpeedLimit, maxWalkSpeedLimit = updateLimitPair(
-            smMinBox.Text,
-            smMaxBox.Text,
-            minWalkSpeedLimit,
-            maxWalkSpeedLimit,
-            0
-        )
-
-        if val ~= nil then
-            isWalkSpeedActive = true
-            currentWalkSpeed = math.clamp(
-                val,
-                minWalkSpeedLimit,
-                maxWalkSpeedLimit
-            )
-
-            if updateWalkSpeedSlider then
-                updateWalkSpeedSlider(currentWalkSpeed, false)
-            end
+limitSaveBtn.MouseButton1Click:Connect(function()
+    local newMin = tonumber(minLimitBox.Text)
+    local newMax = tonumber(maxLimitBox.Text)
+    if newMin and newMax and newMin <= newMax then
+        if activeConfiguringSlider == "WalkSpeed" then
+            minWalkSpeedLimit = newMin
+            maxWalkSpeedLimit = newMax
+            if updateWalkSpeedSlider then updateWalkSpeedSlider(currentWalkSpeed, false) end
+        else
+            minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, newMin)
+            maxAnimSpeedLimit = math.max(minAnimSpeedLimit, newMax)
+            if updateAnimSpeedSlider then updateAnimSpeedSlider(currentAnimMultiplier, false) end
         end
+        saveSavesToFile()
+        say("Updated slider limits successfully!")
     else
-        minAnimSpeedLimit, maxAnimSpeedLimit = updateLimitPair(
-            smMinBox.Text,
-            smMaxBox.Text,
-            minAnimSpeedLimit,
-            maxAnimSpeedLimit,
-            MIN_ANIM_SPEED
-        )
-
-        if val ~= nil then
-            currentAnimMultiplier = math.clamp(
-                val,
-                minAnimSpeedLimit,
-                maxAnimSpeedLimit
-            )
-
-            if updateAnimSpeedSlider then
-                updateAnimSpeedSlider(currentAnimMultiplier, false)
-            end
-        end
+        say("Error: Invalid limit numbers.")
     end
-
-    saveSavesToFile()
-    closeSpeedModal()
+    closeLimitModal()
 end)
 
-local activePrecisionCallback = nil
-local activePrecisionMaxGetter = nil
-local activePrecisionMinGetter = nil
-
-local function createSlider(
-    yPos,
-    labelText,
-    defaultVal,
-    callback,
-    getMinLimit,
-    getMaxLimit
-)
+local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, getMaxLimit)
     local label = Instance.new("TextButton")
     label.Name = labelText .. "Label"
     label.Size = UDim2.fromOffset(170, 18)
     label.Position = UDim2.fromOffset(0, yPos)
     label.BackgroundTransparency = 1
-    label.TextColor3 = Color3.new(1, 1, 1)
-    label.Font = Enum.Font.SourceSansBold
+    label.TextColor3 = customUiConfig.textColor
+    label.Font = Enum.Font.GothamBold
     label.TextSize = customUiConfig.textSize
     label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = sliderContainer
+    label.Parent = sliderContainerParent
     table.insert(managedTextObjects, label)
 
     local function formatLabelText(value, isResetState)
-        if labelText == "Animation Speed"
-            and value == 1
-            and isResetState then
-            return labelText .. ": Default"
+        if labelText == "WalkSpeed" and (not isWalkSpeedActive or isResetState) then 
+            return labelText .. ": Default" 
         end
-
-        if labelText == "WalkSpeed"
-            and (not isWalkSpeedActive or isResetState) then
-            return labelText .. ": Default"
+        if labelText == "Animation Speed" and (not isAnimSpeedActive or isResetState) then 
+            return labelText .. ": Default" 
         end
-
-        return labelText .. ": " .. tostring(value)
+        return labelText .. ": " .. string.format("%.1f", value)
     end
 
-    label.Text = formatLabelText(
-        defaultVal,
-        labelText == "WalkSpeed" or labelText == "Animation Speed"
-    )
+    label.Text = formatLabelText(defaultVal, labelText == "WalkSpeed")
 
     label.MouseButton1Click:Connect(function()
-        openSpeedModal(labelText)
+        openLimitModal(labelText)
     end)
 
     local resetBtn = Instance.new("TextButton")
     resetBtn.Name = labelText .. "Reset"
     resetBtn.Size = UDim2.fromOffset(50, 18)
     resetBtn.Position = UDim2.fromOffset(180, yPos)
-    resetBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    resetBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-    resetBtn.Font = Enum.Font.SourceSansSemibold
+    resetBtn.BackgroundColor3 = customUiConfig.textBgColor
+    resetBtn.TextColor3 = customUiConfig.textColor
+    resetBtn.Font = Enum.Font.GothamSemibold
     resetBtn.TextSize = math.max(10, customUiConfig.textSize - 2)
     resetBtn.Text = "Reset"
-    resetBtn.Parent = sliderContainer
+    resetBtn.Parent = sliderContainerParent
     table.insert(managedTextObjects, resetBtn)
-
-    local resetCorner = Instance.new("UICorner")
-    resetCorner.CornerRadius = UDim.new(0, 4)
-    resetCorner.Parent = resetBtn
+    table.insert(managedInteractiveButtons, resetBtn)
+    local resetCorner = Instance.new("UICorner", resetBtn)
+    resetCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(resetBtn)
 
     local bar = Instance.new("Frame")
     bar.Name = labelText .. "Bar"
     bar.Size = UDim2.fromOffset(230, 8)
     bar.Position = UDim2.fromOffset(0, yPos + 22)
-    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    bar.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
     bar.BorderSizePixel = 0
-    bar.Parent = sliderContainer
+    bar.Parent = sliderContainerParent
 
-    local barCorner = Instance.new("UICorner")
+    local barCorner = Instance.new("UICorner", bar)
     barCorner.CornerRadius = UDim.new(1, 0)
-    barCorner.Parent = bar
+    addProfessionalStroke(bar)
 
     local fill = Instance.new("Frame")
     fill.Name = "Fill"
-    fill.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = customUiConfig.sliderColor
     fill.BorderSizePixel = 0
     fill.Parent = bar
+    table.insert(managedSliders, fill)
 
     local fillCorner = Instance.new("UICorner")
     fillCorner.CornerRadius = UDim.new(1, 0)
@@ -1081,356 +1512,310 @@ local function createSlider(
     sliderButton.AutoButtonColor = false
     sliderButton.Parent = bar
 
-    local holdTimer
     local currentValHolder = defaultVal
-    local isPrecisionActive = false
     local localDragging = false
-    local pressPos = Vector2.zero
-    local wasPreviouslyMinimized = false
-    local isHovered = false
 
-    local updateValue
-
-    local function cancelHold()
-        if holdTimer then
-            task.cancel(holdTimer)
-            holdTimer = nil
-        end
-    end
-
-    updateValue = function(value, isReset)
+    local function updateValue(value, isReset)
         local currentMin = tonumber(getMinLimit()) or 0
         local currentMax = tonumber(getMaxLimit()) or currentMin
-
         currentMax = math.max(currentMin, currentMax)
-
         value = tonumber(value) or currentValHolder
-        value = math.clamp(value, currentMin, currentMax)
-
-        if not isPrecisionActive then
-            if currentMax > 100 then
-                value = math.round(value)
-            elseif currentMax <= 10 then
-                value = math.floor(value * 100 + 0.5) / 100
-            else
-                value = math.floor(value * 10 + 0.5) / 10
-            end
-        elseif currentMax > 10 then
-            value = math.floor(value * 10) / 10
-        else
-            value = math.floor(value * 100) / 100
-        end
-
-        value = math.clamp(value, currentMin, currentMax)
+        value = math.clamp(math.round(value * 10) / 10, currentMin, currentMax)
         currentValHolder = value
 
         local range = math.max(currentMax - currentMin, 0.001)
-        local ratio = math.clamp(
-            (value - currentMin) / range,
-            0,
-            1
-        )
+        local ratio = math.clamp((value - currentMin) / range, 0, 1)
 
         fill.Size = UDim2.new(ratio, 0, 1, 0)
         label.Text = formatLabelText(value, isReset)
-
         callback(value, isReset)
-
-        if isPrecisionActive and precisionOverlay.Visible then
-            precisionTitle.Text = string.format(
-                "%s (Precision): %.2f",
-                labelText,
-                value
-            )
-
-            screenFill.Size = UDim2.new(ratio, 0, 1, 0)
-        end
     end
 
     if labelText == "WalkSpeed" then
-        updateWalkSpeedSlider = function(newValue, isReset)
-            updateValue(newValue, isReset == true)
-        end
-    elseif labelText == "Animation Speed" then
-        updateAnimSpeedSlider = function(newValue, isReset)
-            updateValue(newValue, isReset == true)
-        end
+        updateWalkSpeedSlider = updateValue
+    else
+        updateAnimSpeedSlider = updateValue
     end
 
-    bar.MouseEnter:Connect(function()
-        isHovered = true
-    end)
-
-    bar.MouseLeave:Connect(function()
-        isHovered = false
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if not isHovered then
-            return
-        end
-
-        if input.UserInputType ~= Enum.UserInputType.MouseWheel then
-            return
-        end
-
-        local wheelDelta = input.Position.Z
-
-        if wheelDelta == 0 then
-            return
-        end
-
-        local newValue = currentValHolder + (wheelDelta > 0 and 1 or -1)
-
-        if labelText == "WalkSpeed" then
-            isWalkSpeedActive = true
-        end
-
-        updateValue(newValue, false)
-    end)
-
     resetBtn.MouseButton1Click:Connect(function()
-        cancelHold()
-
-        if isPrecisionActive then
-            isPrecisionActive = false
-            precisionOverlay.Visible = false
-
-            if not wasPreviouslyMinimized then
-                setSpeedMinimized(false)
-            end
-        end
-
         if labelText == "WalkSpeed" then
             isWalkSpeedActive = false
-            currentWalkSpeed = originalWalkSpeed
-            updateValue(originalWalkSpeed, true)
+            currentWalkSpeed = 16
+
+            if humanoid and humanoid.Parent then
+                pcall(function()
+                    humanoid.WalkSpeed = 16
+                end)
+            end
+            updateValue(16, true)
         else
-            currentAnimMultiplier = 1
-            updateValue(1, true)
+            isAnimSpeedActive = false
+            currentAnimMultiplier = 1.0
+            updateValue(1.0, true)
         end
     end)
 
-    sliderButton.MouseButton1Down:Connect(function()
-        localDragging = true
-        cancelHold()
+    local holdTimer = nil
+    local initialMousePos = Vector2.zero
+    local isHolding = false
 
-        pressPos = UserInputService:GetMouseLocation()
+    local function activateBigSlider()
+        setSpeedMinimized(true)
+        bigSliderTitle.Text = labelText .. " (Editing): " .. string.format("%.1f", currentValHolder)
+        bigSliderOverlay.Visible = true
+        cursorSpeedLabel.Visible = true
 
-        holdTimer = task.delay(1, function()
-            if not localDragging then
-                return
+        local curMin = tonumber(getMinLimit()) or 0
+        local curMax = tonumber(getMaxLimit()) or curMin
+        curMax = math.max(curMin, curMax)
+        local ratio = math.clamp((currentValHolder - curMin) / math.max(curMax - curMin, 0.001), 0, 1)
+
+        bigSliderFill.Size = UDim2.new(ratio, 0, 1, 0)
+        cursorSpeedLabel.Text = string.format("%.1f", currentValHolder)
+
+        task.defer(function()
+            local absPos = bigSliderBar.AbsolutePosition
+            local absSize = bigSliderBar.AbsoluteSize
+            if absSize.X > 0 then
+                local targetX = absPos.X + (ratio * absSize.X)
+                local targetY = absPos.Y + (absSize.Y / 2)
+                pcall(function()
+                    mousemoveabs(targetX, targetY)
+                end)
             end
+        end)
 
-            local currentPos = UserInputService:GetMouseLocation()
+        local bigDragging = true
+        local function updateBigVal(inputObj)
+            local pointerX = inputObj.Position.X
+            local barPos = bigSliderBar.AbsolutePosition.X
+            local barSize = bigSliderBar.AbsoluteSize.X
+            if barSize <= 0 then return end
 
-            if (currentPos - pressPos).Magnitude < 5 then
-                isPrecisionActive = true
-                activePrecisionCallback = updateValue
-                activePrecisionMaxGetter = getMaxLimit
-                activePrecisionMinGetter = getMinLimit
+            local r = math.clamp((pointerX - barPos) / barSize, 0, 1)
+            local val = curMin + r * (curMax - curMin)
+            if labelText == "WalkSpeed" then 
+                isWalkSpeedActive = true 
+            else
+                isAnimSpeedActive = true
+            end
+            updateValue(val, false)
+            bigSliderFill.Size = UDim2.new(r, 0, 1, 0)
 
-                wasPreviouslyMinimized = isSpeedMinimized
+            bigSliderTitle.Text = labelText .. " (Editing): " .. string.format("%.1f", val)
+            cursorSpeedLabel.Text = string.format("%.1f", val)
+            local mouseLoc = UserInputService:GetMouseLocation()
+            cursorSpeedLabel.Position = UDim2.fromOffset(mouseLoc.X + 15, mouseLoc.Y - 25)
+        end
 
-                if not isSpeedMinimized then
-                    setSpeedMinimized(true)
-                end
+        local connChanged, connEnded
+        connChanged = UserInputService.InputChanged:Connect(function(input)
+            if bigDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                updateBigVal(input)
+            end
+        end)
 
-                precisionTitle.Text = string.format(
-                    "%s (Precision): %.2f",
-                    labelText,
-                    currentValHolder
-                )
+        connEnded = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                bigDragging = false
+                bigSliderOverlay.Visible = false
+                cursorSpeedLabel.Visible = false
+                setSpeedMinimized(false)
+                if connChanged then connChanged:Disconnect() end
+                if connEnded then connEnded:Disconnect() end
+            end
+        end)
+    end
 
-                local precisionMin = getMinLimit()
-                local precisionMax = getMaxLimit()
-                local precisionRange = math.max(
-                    precisionMax - precisionMin,
-                    0.001
-                )
-
-                local ratio = math.clamp(
-                    (currentValHolder - precisionMin) / precisionRange,
-                    0,
-                    1
-                )
-
-                screenFill.Size = UDim2.new(ratio, 0, 1, 0)
-                precisionOverlay.Visible = true
+    sliderButton.MouseButton1Down:Connect(function()
+        isHolding = true
+        initialMousePos = UserInputService:GetMouseLocation()
+        localDragging = true
+        
+        if holdTimer then task.cancel(holdTimer) end
+        holdTimer = task.delay(0.5, function()
+            if isHolding then
+                isHolding = false
+                localDragging = false
+                activateBigSlider()
             end
         end)
     end)
 
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
-            return
-        end
-
-        localDragging = false
-        cancelHold()
-
-        if isPrecisionActive then
-            isPrecisionActive = false
-            precisionOverlay.Visible = false
-
-            if not wasPreviouslyMinimized then
-                setSpeedMinimized(false)
-            end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            isHolding = false
+            localDragging = false
+            if holdTimer then task.cancel(holdTimer) holdTimer = nil end
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if not localDragging then
-            return
+        if isHolding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local currentPos = UserInputService:GetMouseLocation()
+            if (currentPos - initialMousePos).Magnitude > 8 then
+                isHolding = false
+                if holdTimer then task.cancel(holdTimer) holdTimer = nil end
+            end
         end
 
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement then
-            return
-        end
+        if not localDragging then return end
+        local isMouseInput = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchInput = input.UserInputType == Enum.UserInputType.Touch
+        if not isMouseInput and not isTouchInput then return end
 
-        local currentPos = UserInputService:GetMouseLocation()
-
-        if not isPrecisionActive
-            and (currentPos - pressPos).Magnitude > 5 then
-            cancelHold()
-        end
-
-        if isPrecisionActive then
-            return
-        end
-
+        local pointerX = isTouchInput and input.Position.X or UserInputService:GetMouseLocation().X
         local barPosition = bar.AbsolutePosition.X
         local barWidth = bar.AbsoluteSize.X
+        if barWidth <= 0 then return end
 
-        if barWidth <= 0 then
-            return
+        local ratio = math.clamp((pointerX - barPosition) / barWidth, 0, 1)
+        local minLimit = tonumber(getMinLimit()) or 0
+        local maxLimit = tonumber(getMaxLimit()) or minLimit
+        local value = minLimit + ratio * (maxLimit - minLimit)
+
+        if labelText == "WalkSpeed" then 
+            isWalkSpeedActive = true 
+        else
+            isAnimSpeedActive = true
         end
-
-        local ratio = math.clamp(
-            (currentPos.X - barPosition) / barWidth,
-            0,
-            1
-        )
-
-        local currentMin = getMinLimit()
-        local currentMax = getMaxLimit()
-        local value = currentMin + ratio * (currentMax - currentMin)
-
-        if labelText == "WalkSpeed" then
-            isWalkSpeedActive = true
-        end
-
         updateValue(value, false)
     end)
+
+    local function isMouseOver(guiObj)
+        local mousePos = UserInputService:GetMouseLocation()
+        local absPos = guiObj.AbsolutePosition
+        local absSize = guiObj.AbsoluteSize
+        return mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+               mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y
+    end
+
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if input.UserInputType == Enum.UserInputType.MouseWheel then
+            if isMouseOver(label) or isMouseOver(bar) or isMouseOver(resetBtn) then
+                local direction = input.Position.Z > 0 and 1 or -1
+                if labelText == "WalkSpeed" then 
+                    isWalkSpeedActive = true 
+                else
+                    isAnimSpeedActive = true
+                end
+                updateValue(currentValHolder + direction, false)
+            end
+        end
+    end)
+
+    updateValue(defaultVal, true)
 end
 
--- Full-screen precision dragging support
-UserInputService.InputChanged:Connect(function(input)
-    if precisionOverlay.Visible and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local mousePos = UserInputService:GetMouseLocation().X
-        local barPos = screenBar.AbsolutePosition.X
-        local barSize = screenBar.AbsoluteSize.X
-        local ratio = math.clamp((mousePos - barPos) / barSize, 0, 1)
-        if activePrecisionMaxGetter and activePrecisionMinGetter and activePrecisionCallback then
-            local currentMin = activePrecisionMinGetter()
-            local currentMax = activePrecisionMaxGetter()
-            local val = currentMin + ratio * (currentMax - currentMin)
-            activePrecisionCallback(val, false)
+createSlider(0, "WalkSpeed", 16, function(val, isReset)
+    if isReset then
+        isWalkSpeedActive = false
+        currentWalkSpeed = 16
+
+        if humanoid and humanoid.Parent then
+            pcall(function()
+                humanoid.WalkSpeed = 16
+            end)
+        end
+    else
+        isWalkSpeedActive = true
+        currentWalkSpeed = val
+
+        if humanoid and humanoid.Parent then
+            pcall(function()
+                humanoid.WalkSpeed = val
+            end)
         end
     end
+end, function()
+    return minWalkSpeedLimit
+end, function()
+    return maxWalkSpeedLimit
 end)
-
-createSlider(0, "WalkSpeed", 16, function(val, isReset)
-    currentWalkSpeed = val
-    if not isReset then
-        isWalkSpeedActive = true
-    end
-    if humanoid and humanoid.Parent then
-        pcall(function()
-            if isReset then
-                isWalkSpeedActive = false
-                humanoid.WalkSpeed = originalWalkSpeed
-            else
-                if isGameAntiCheatActive then
-                    humanoid.WalkSpeed = val
-                else
-                    local base = originalWalkSpeed > 0 and originalWalkSpeed or 16
-                    humanoid.WalkSpeed = base + (val - 16)
-                end
-            end
-        end)
-    end
-end, function() return minWalkSpeedLimit end, function() return maxWalkSpeedLimit end)
 
 createSlider(48, "Animation Speed", 1.0, function(val, isReset)
     if isReset then
+        isAnimSpeedActive = false
         currentAnimMultiplier = 1.0
     else
+        isAnimSpeedActive = true
         currentAnimMultiplier = val
     end
 end, function() return minAnimSpeedLimit end, function() return maxAnimSpeedLimit end)
 
--- Controls inside Custom Saves Panel
-local btnOpenModal = mk(savesFrame, "TextButton", 20, 16, "Add Custom Animation")
+sliderContainerParent.Visible = not isSpeedMinimized
 
+local btnOpenModal = mk(savesFrame, "TextButton", 20, 16, "Add Custom Animation")
 local searchBox = mk(savesFrame, "TextBox", 56, 28)
+searchBox.Size = UDim2.fromOffset(470, 28)
 searchBox.PlaceholderText = "Search custom animations..."
 searchBox.Text = ""
 searchBox.ClearTextOnFocus = false
-searchBox.Font = Enum.Font.SourceSans
+searchBox.Font = Enum.Font.Gotham
 searchBox.TextSize = customUiConfig.textSize
 
+local leftColumnX = 20
+local rightColumnX = 265
+
 local overridesLabel = Instance.new("TextLabel", savesFrame)
-overridesLabel.Size = UDim2.fromOffset(230, 18)
-overridesLabel.Position = UDim2.fromOffset(10, 88)
+overridesLabel.Size = UDim2.fromOffset(225, 18)
+overridesLabel.Position = UDim2.fromOffset(leftColumnX, 92)
 overridesLabel.BackgroundTransparency = 1
-overridesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-overridesLabel.Font = Enum.Font.SourceSansBold
+overridesLabel.TextColor3 = customUiConfig.textColor
+overridesLabel.Font = Enum.Font.GothamBold
 overridesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
 overridesLabel.TextXAlignment = Enum.TextXAlignment.Left
-overridesLabel.Text = "Overrides / Loops:"
+overridesLabel.Text = "Overrides / Loops"
 table.insert(managedTextObjects, overridesLabel)
 
-makeDraggable(savesFrame, overridesLabel)
-
 local scrollOverrides = Instance.new("ScrollingFrame", savesFrame)
-scrollOverrides.Size = UDim2.fromOffset(230, 85)
-scrollOverrides.Position = UDim2.fromOffset(10, 108)
-scrollOverrides.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+scrollOverrides.Size = UDim2.fromOffset(225, 205)
+scrollOverrides.Position = UDim2.fromOffset(leftColumnX, 114)
+scrollOverrides.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
 scrollOverrides.BorderSizePixel = 0
 scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, 0)
 local soCorner = Instance.new("UICorner", scrollOverrides)
 soCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(scrollOverrides)
+
+local divider = Instance.new("Frame", savesFrame)
+divider.Size = UDim2.fromOffset(4, 230)
+divider.Position = UDim2.fromOffset(253, 92)
+divider.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+divider.BorderSizePixel = 0
+addProfessionalStroke(divider, Color3.fromRGB(255, 255, 255), 1)
 
 local posesLabel = Instance.new("TextLabel", savesFrame)
-posesLabel.Size = UDim2.fromOffset(230, 18)
-posesLabel.Position = UDim2.fromOffset(10, 200)
+posesLabel.Size = UDim2.fromOffset(225, 18)
+posesLabel.Position = UDim2.fromOffset(rightColumnX, 92)
 posesLabel.BackgroundTransparency = 1
-posesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-posesLabel.Font = Enum.Font.SourceSansBold
+posesLabel.TextColor3 = customUiConfig.textColor
+posesLabel.Font = Enum.Font.GothamBold
 posesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
 posesLabel.TextXAlignment = Enum.TextXAlignment.Left
-posesLabel.Text = "Pose/Dance (Right-Click to Delete):"
+posesLabel.Text = "Pose/Dance (Right-Click)"
 table.insert(managedTextObjects, posesLabel)
 
 local scrollPoses = Instance.new("ScrollingFrame", savesFrame)
-scrollPoses.Size = UDim2.fromOffset(230, 85)
-scrollPoses.Position = UDim2.fromOffset(10, 220)
-scrollPoses.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+scrollPoses.Size = UDim2.fromOffset(225, 205)
+scrollPoses.Position = UDim2.fromOffset(rightColumnX, 114)
+scrollPoses.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
 scrollPoses.BorderSizePixel = 0
 scrollPoses.CanvasSize = UDim2.new(0, 0, 0, 0)
 local spCorner = Instance.new("UICorner", scrollPoses)
 spCorner.CornerRadius = UDim.new(0, 6)
+addProfessionalStroke(scrollPoses)
 
 local modalTitle = Instance.new("TextLabel", modalFrame)
 modalTitle.Size = UDim2.fromOffset(260, 24)
 modalTitle.Position = UDim2.fromOffset(20, 15)
 modalTitle.BackgroundTransparency = 1
-modalTitle.TextColor3 = Color3.new(1, 1, 1)
-modalTitle.Font = Enum.Font.SourceSansBold
+modalTitle.TextColor3 = customUiConfig.textColor
+modalTitle.Font = Enum.Font.GothamBold
 modalTitle.TextSize = 16
 modalTitle.Text = "Add Custom Animation"
 modalTitle.ZIndex = 12
+table.insert(managedTextObjects, modalTitle)
 
 local mNameBox = mkModal(modalFrame, "TextBox", 20, 50, 260, 30)
 mNameBox.PlaceholderText = "Animation Name"
@@ -1444,45 +1829,45 @@ mIdBox.ClearTextOnFocus = false
 
 local isOverrideMode = true
 local mTypeBtn = mkModal(modalFrame, "TextButton", 20, 130, 260, 30, "Type: Override / Loop")
-
 local isSpeedScaled = true
 local mSpeedBtn = mkModal(modalFrame, "TextButton", 20, 170, 260, 30, "Speed Scaled: ON")
-
 local isHipHeightEnabled = false
 local mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "Extra Hip Height: OFF")
 
 local mConfirmBtn = mkModal(modalFrame, "TextButton", 20, 255, 120, 36, "Save")
 local mCancelBtn = mkModal(modalFrame, "TextButton", 160, 255, 120, 36, "Cancel")
 
--- Delete Confirmation Popup Elements
 local deleteModalTitle = Instance.new("TextLabel", deleteModalFrame)
 deleteModalTitle.Size = UDim2.fromOffset(240, 24)
 deleteModalTitle.Position = UDim2.fromOffset(20, 15)
 deleteModalTitle.BackgroundTransparency = 1
-deleteModalTitle.TextColor3 = Color3.new(1, 1, 1)
-deleteModalTitle.Font = Enum.Font.SourceSansBold
+deleteModalTitle.TextColor3 = customUiConfig.textColor
+deleteModalTitle.Font = Enum.Font.GothamBold
 deleteModalTitle.TextSize = 16
 deleteModalTitle.Text = "Confirm Deletion"
 deleteModalTitle.ZIndex = 42
+table.insert(managedTextObjects, deleteModalTitle)
 
 local deleteModalMsg = Instance.new("TextLabel", deleteModalFrame)
 deleteModalMsg.Size = UDim2.fromOffset(240, 40)
 deleteModalMsg.Position = UDim2.fromOffset(20, 45)
 deleteModalMsg.BackgroundTransparency = 1
-deleteModalMsg.TextColor3 = Color3.fromRGB(200, 200, 200)
-deleteModalMsg.Font = Enum.Font.SourceSans
+deleteModalMsg.TextColor3 = Color3.fromRGB(200, 200, 210)
+deleteModalMsg.Font = Enum.Font.Gotham
 deleteModalMsg.TextSize = 13
 deleteModalMsg.TextXAlignment = Enum.TextXAlignment.Left
 deleteModalMsg.TextYAlignment = Enum.TextYAlignment.Top
 deleteModalMsg.TextWrapped = true
 deleteModalMsg.Text = "Are you sure you want to delete this animation?"
 deleteModalMsg.ZIndex = 42
+table.insert(managedTextObjects, deleteModalMsg)
 
 local delConfirmBtn = mkModal(deleteModalFrame, "TextButton", 20, 100, 110, 36, "Delete")
 local delCancelBtn = mkModal(deleteModalFrame, "TextButton", 150, 100, 110, 36, "Cancel")
 delConfirmBtn.ZIndex = 42
 delCancelBtn.ZIndex = 42
 delConfirmBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+addProfessionalStroke(delConfirmBtn)
 
 local pendingDeleteIndex = nil
 
@@ -1508,7 +1893,6 @@ local function closeDeleteModal()
 end
 
 delCancelBtn.MouseButton1Click:Connect(closeDeleteModal)
-
 delConfirmBtn.MouseButton1Click:Connect(function()
     if pendingDeleteIndex then
         table.remove(saveData.customSaves, pendingDeleteIndex)
@@ -1522,8 +1906,7 @@ end)
 mTypeBtn.MouseButton1Click:Connect(function()
     isOverrideMode = not isOverrideMode
     mTypeBtn.Text = "Type: " .. (isOverrideMode and "Override / Loop" or "Pose/Dance")
-    
-    if isOverrideMode  then
+    if isOverrideMode then
         mSpeedBtn.Visible = true
         mHipBtn.Visible = true
         mConfirmBtn.Position = UDim2.fromOffset(20, 255)
@@ -1548,679 +1931,324 @@ mHipBtn.MouseButton1Click:Connect(function()
     mHipBtn.Text = "Extra Hip Height: " .. (isHipHeightEnabled and "ON" or "OFF")
 end)
 
-local track = nil
-local tallTrack = nil 
-local shortTrack = nil
-local globalLoopConn, walkSpeedConn, eventConn, enabled = nil, nil, nil, false
-local tallEnabled = false
-local shortEnabled = false
+local globalLoopConn, eventConn, enabled = nil, nil, false
 
-local function say(m)
-    status.Text = m
-end
-
-local function applyHipHeight(enable, customAmount)
-    if not humanoid then return end
-    if enable then
-        if not isHipHeightActive then
-            originalHipHeight = humanoid.HipHeight
-            isHipHeightActive = true
-        end
-        currentExtraHipHeight = customAmount or 0.2
-        humanoid.HipHeight = originalHipHeight + currentExtraHipHeight
-    else
-        if isHipHeightActive then
-            humanoid.HipHeight = originalHipHeight
-            isHipHeightActive = false
-            currentExtraHipHeight = 0
-        end
+say = function(message)
+    if status and status.Parent then
+        status.Text = tostring(message)
     end
 end
 
-local function detectAntiCheatAndStartLoop()
-    if walkSpeedConn then walkSpeedConn:Disconnect() end
+local function loadAnim(idStr, speedScaled, isPose)
+    if not animator then say("Error: No Animator found.") return false end
+    local id = idStr:match("%d+") 
+    if not id then say("Error: Invalid animation ID.") return false end
     
-    isGameAntiCheatActive = false
-    pcall(function()
-        if humanoid then
-            local originalTestVal = humanoid.WalkSpeed
-            local testVal = originalTestVal + 5
-            humanoid.WalkSpeed = testVal
-            task.wait(0.05)
-            if humanoid.WalkSpeed ~= testVal then
-                isGameAntiCheatActive = true
+    if isPose then
+        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+        
+        local a = Instance.new("Animation")
+        a.AnimationId = "rbxassetid://" .. id
+        local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+        a:Destroy()
+        if not ok or not newTrack then say("Engine failed to load pose.") return false end
+        poseTrack = newTrack
+        poseTrack.Priority = HIGH
+        poseTrack.Looped = true
+        activeAnimConfig.isPose = true
+        pcall(function() poseTrack:Play(0.1, 1, 1) end)
+        say("Playing Pose ID: " .. id)
+        return true
+    else
+        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        
+        local a = Instance.new("Animation")
+        a.AnimationId = "rbxassetid://" .. id
+        local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+        a:Destroy()
+        if not ok or not newTrack then say("Engine failed to load override.") return false end
+        track = newTrack
+        track.Priority = HIGH
+        track.Looped = true
+        activeAnimConfig.speedScaled = (speedScaled == true)
+        activeAnimConfig.isPose = false
+        say("Loaded Override ID: " .. id)
+        return true
+    end
+end
+
+btnTall.MouseButton1Click:Connect(function()
+    tallEnabled = not tallEnabled
+    btnTall.Text = "Tall: " .. (tallEnabled and "ON" or "OFF")
+    if tallEnabled then
+        shortEnabled = false
+        btnShort.Text = "Short: OFF"
+        loadAnim("92807081069528", true, false)
+        enabled = true
+        btn.Text = "Stop"
+    else
+        if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+        enabled = false
+        btn.Text = "Play"
+        say("Tall animation stopped.")
+    end
+end)
+
+btnShort.MouseButton1Click:Connect(function()
+    shortEnabled = not shortEnabled
+    btnShort.Text = "Short: " .. (shortEnabled and "ON" or "OFF")
+    if shortEnabled then
+        tallEnabled = false
+        btnTall.Text = "Tall: OFF"
+        loadAnim("137317695640929", true, false)
+        enabled = true
+        btn.Text = "Stop"
+    else
+        if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+        enabled = false
+        btn.Text = "Play"
+        say("Short animation stopped.")
+    end
+end)
+
+local function startAnimLoop()
+    if not animator then return end
+    if eventConn then eventConn:Disconnect(); eventConn = nil end
+
+    eventConn = animator.AnimationPlayed:Connect(function(animationTrack)
+        if not enabled then return end
+        if animationTrack ~= track and animationTrack ~= poseTrack then 
+            if currentAnimMultiplier ~= 1.0 then
+                pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
             end
-            humanoid.WalkSpeed = originalTestVal
         end
     end)
 
-    if isGameAntiCheatActive then
-        pcall(function()
-            local mt = getrawmetatable(game)
-            if mt then
-                setreadonly(mt, false)
-                local oldNewIndex = mt.__newindex
-                mt.__newindex = newcclosure(function(self, index, value)
-                    if isWalkSpeedActive and self == humanoid and index == "WalkSpeed" and value ~= currentWalkSpeed then
-                        return oldNewIndex(self, index, currentWalkSpeed)
-                    end
-                    return oldNewIndex(self, index, value)
-                end)
-                setreadonly(mt, true)
-            end
-        end)
-    end
+    if globalLoopConn then return end
 
-    walkSpeedConn = RunService.RenderStepped:Connect(function()
-        if humanoid and humanoid.Parent then
-            local currentVel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
-            local currentGroundSpeed = Vector3.new(currentVel.X, 0, currentVel.Z).Magnitude
-            speedometerLabel.Text = string.format("Current Speed: %.1f", currentGroundSpeed)
-            
-            if isWalkSpeedActive then
-                if isGameAntiCheatActive then
-                    if humanoid.WalkSpeed ~= currentWalkSpeed then
-                        pcall(function() humanoid.WalkSpeed = currentWalkSpeed end)
-                    end
-                else
-                    local base = originalWalkSpeed > 0 and originalWalkSpeed or 16
-                    local target = base + (currentWalkSpeed - 16)
-                    if math.abs(humanoid.WalkSpeed - target) > 1 then
-                        if humanoid.WalkSpeed ~= currentWalkSpeed and humanoid.WalkSpeed ~= base then
-                            originalWalkSpeed = humanoid.WalkSpeed
-                        end
-                    end
-                    if humanoid.WalkSpeed ~= target then
-                        pcall(function() humanoid.WalkSpeed = target end)
-                    end
+    globalLoopConn = RunService.RenderStepped:Connect(function(dt)
+        if not animator or not animator.Parent then return end
+
+        if isWalkSpeedActive and humanoid and humanoid.Parent then
+            humanoid.WalkSpeed = currentWalkSpeed
+        end
+
+        if rootPart and rootPart.Parent then
+            local velocity = rootPart.AssemblyLinearVelocity
+            local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+            if speedometerLabel and speedometerLabel.Parent then
+                speedometerLabel.Text = string.format("Current Speed: %.1f", groundSpeed)
+            end
+        end
+
+        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            if animationTrack ~= track and animationTrack ~= poseTrack then
+                if currentAnimMultiplier ~= 1.0 then
+                    pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
                 end
             end
         end
-    end)
-end
 
-local function getAnimationSpeed(groundSpeed)
-    if activeAnimConfig.isPose or activeAnimConfig.speedScaled == false then
-        return currentAnimMultiplier
-    end
+        if not enabled then return end
 
-    local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
-    local speedRatio = groundSpeed / baseWalkSpeed
-    local baseAnimationSpeed = math.clamp(
-        speedRatio,
-        MIN_ANIM_SPEED,
-        MAX_ANIM_SPEED
-    )
-
-    return math.clamp(
-        baseAnimationSpeed * currentAnimMultiplier,
-        MIN_ANIM_SPEED,
-        MAX_ANIM_SPEED
-    )
-end
-
-local function ensureTrackPlaying(animationTrack)
-    if not animationTrack or animationTrack.IsPlaying then
-        return
-    end
-
-    pcall(function()
-        animationTrack:Play(0.1, 1, 0)
-    end)
-end
-
-local function freezePoseTrack(animationTrack)
-    if not animationTrack then
-        return
-    end
-
-    ensureTrackPlaying(animationTrack)
-
-    pcall(function()
-        if animationTrack.Length > 0 then
-            animationTrack.TimePosition = math.min(
-                STATIONARY_REST_TIME,
-                math.max(animationTrack.Length - 0.001, 0)
-            )
-        end
-
-        animationTrack:AdjustSpeed(0)
-    end)
-end
-
-local function startAnimLoop()
-    if not animator then
-        return
-    end
-
-    if eventConn then
-        eventConn:Disconnect()
-        eventConn = nil
-    end
-
-    eventConn = animator.AnimationPlayed:Connect(function(animationTrack)
-        if not enabled then
-            return
-        end
-
-        if animationTrack ~= track
-            and animationTrack ~= tallTrack
-            and animationTrack ~= shortTrack then
-
-            pcall(function()
-                animationTrack:Stop()
-            end)
-        end
-    end)
-
-    if globalLoopConn then
-        return
-    end
-
-    globalLoopConn = RunService.RenderStepped:Connect(function(dt)
-        if not animator or not animator.Parent then
-            return
-        end
-
-        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-            if animationTrack ~= track
-                and animationTrack ~= tallTrack
-                and animationTrack ~= shortTrack then
-
-                pcall(function()
-                    animationTrack:AdjustSpeed(currentAnimMultiplier)
-                end)
+        if activeAnimConfig.isPose then
+            if poseTrack and not poseTrack.IsPlaying then
+                pcall(function() poseTrack:Play(0.1, 1, 1) end)
             end
-        end
-
-        if tallEnabled and tallTrack then
-            freezePoseTrack(tallTrack)
-        end
-
-        if shortEnabled and shortTrack then
-            freezePoseTrack(shortTrack)
-        end
-
-        if not enabled or not track then
+            pcall(function() poseTrack:AdjustSpeed(currentAnimMultiplier) end)
             return
         end
 
-        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-            if animationTrack ~= track
-                and animationTrack ~= tallTrack
-                and animationTrack ~= shortTrack
-                and animationTrack.IsPlaying then
-
-                pcall(function()
-                    animationTrack:Stop()
-                end)
-            end
-        end
-
-        ensureTrackPlaying(track)
-
-        if not rootPart or not rootPart.Parent or not track.IsPlaying then
-            return
-        end
+        if not track then return end
+        if not track.IsPlaying then pcall(function() track:Play(0.1, 1, 0) end) end
+        if not rootPart or not rootPart.Parent then return end
 
         local velocity = rootPart.AssemblyLinearVelocity
-        local groundSpeed = Vector3.new(
-            velocity.X,
-            0,
-            velocity.Z
-        ).Magnitude
+        local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
 
-        if not activeAnimConfig.isPose and groundSpeed < 0.1 then
-            pcall(function()
-                local targetPosition = math.min(
-                    STATIONARY_REST_TIME,
-                    math.max(track.Length - 0.001, 0)
-                )
-
-                track.TimePosition += (
-                    targetPosition - track.TimePosition
-                ) * math.clamp(dt * 10, 0, 1)
-
-                track:AdjustSpeed(0)
-            end)
+        local animationSpeed
+        if activeAnimConfig.speedScaled then
+            local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
+            animationSpeed = math.clamp((groundSpeed / baseWalkSpeed) * currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
         else
-            local animationSpeed = getAnimationSpeed(groundSpeed)
+            animationSpeed = math.clamp(currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+        end
 
+        pcall(function() track:AdjustSpeed(animationSpeed) end)
+
+        if groundSpeed < 0.1 then
             pcall(function()
-                track:AdjustSpeed(animationSpeed)
+                local targetPosition = math.min(STATIONARY_REST_TIME, math.max(track.Length - 0.001, 0))
+                track.TimePosition += (targetPosition - track.TimePosition) * math.clamp(dt * 10, 0, 1)
+                track:AdjustSpeed(0)
             end)
         end
     end)
 end
 
-local function loadAnim(idStr, speedScaled, hipHeightEnabled)
-    if not animator then
-        say("Error: No Animator found.")
-        return false
-    end
+refreshSavesUI = function()
+    for _, child in ipairs(scrollOverrides:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+    for _, child in ipairs(scrollPoses:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
     
-    local id = idStr:match("%d+") 
-    if not id then
-        say("Error: Invalid animation ID.")
-        return false
-    end
-    
-    if track then
-        pcall(function() track:Stop() end)
-        track:Destroy()
-        track = nil
-    end
-
-    local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://" .. id
-    
-    local ok, newTrack = pcall(function()
-        return animator:LoadAnimation(a)
-    end)
-    
-    a:Destroy()
-
-    if not ok or not newTrack then
-        say("Engine failed to load. (Private asset or bad ID)")
-        return false
-    end
-
-    track = newTrack
-    track.Priority = HIGH
-    track.Looped = true
-    
-    activeAnimConfig.speedScaled = (speedScaled == true)
-    activeAnimConfig.hipHeightEnabled = (hipHeightEnabled == true)
-    activeAnimConfig.isPose = false
-    
-    if not activeAnimConfig.speedScaled then
-        task.defer(function()
-            if track then pcall(function() track:AdjustSpeed(currentAnimMultiplier) end) end
-        end)
-    end
-    
-    if activeAnimConfig.hipHeightEnabled then
-        applyHipHeight(true, 0.2)
-    else
-        applyHipHeight(false)
-    end
-    
-    say("Loaded ID: " .. id)
-    return true
-end
-
-local function playOneUsePose(idStr)
-    if not animator then return end
-    local id = idStr:match("%d+")
-    if not id then return end
-
-    if track then
-        pcall(function() track:Stop(0.1) end)
-        track:Destroy()
-        track = nil
-    end
-
-    local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://" .. id
-    
-    local ok, newTrack = pcall(function()
-        return animator:LoadAnimation(a)
-    end)
-    
-    a:Destroy()
-
-    if ok and newTrack then
-        track = newTrack
-        track.Priority = Enum.AnimationPriority.Action4
-        track.Looped = true
-        track:Play(0.1, 1, currentAnimMultiplier)
-        
-        activeAnimConfig.isPose = true
-        activeAnimConfig.speedScaled = false
-        activeAnimConfig.hipHeightEnabled = false
-        
-        enabled = true
-        btn.Text = "Stop"
-        startAnimLoop()
-        
-        say("Applied Custom Animation.")
-    else
-        say("Failed to play animation.")
-    end
-end
-
-function refreshSavesUI()
-    for _, child in ipairs(scrollOverrides:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    for _, child in ipairs(scrollPoses:GetChildren()) do
-        if child:IsA("TextButton") then child:Destroy() end
-    end
-    
-    local overrideCount = 0
-    local poseCount = 0
+    local overrideCount, poseCount = 0, 0
     local query = string.lower(searchBox.Text)
     
+    local indexedSaves = {}
     for i, save in ipairs(saveData.customSaves) do
-        local nameLower = string.lower(save.name)
-        local matchesSearch = (query == "" or string.find(nameLower, query, 1, true) ~= nil)
-        
-        if matchesSearch then
+        table.insert(indexedSaves, {index = i, save = save})
+    end
+    table.sort(indexedSaves, function(a: {index: number, save: any}, b: {index: number, save: any}): boolean
+        return string.lower(a.save.name) < string.lower(b.save.name)
+    end)
+    
+    for _, item in ipairs(indexedSaves) do
+        local i = item.index
+        local save = item.save
+        if query == "" or string.find(string.lower(save.name), query, 1, true) ~= nil then
             if save.isOverride then
                 overrideCount = overrideCount + 1
                 local saveBtnUI = Instance.new("TextButton", scrollOverrides)
-                saveBtnUI.Size = UDim2.fromOffset(210, 28)
+                saveBtnUI.Size = UDim2.fromOffset(205, 28)
                 saveBtnUI.Position = UDim2.fromOffset(10, (overrideCount - 1) * 32 + 5)
-                saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-                saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
-                saveBtnUI.Font = Enum.Font.SourceSans
+                saveBtnUI.BackgroundColor3 = customUiConfig.textBgColor
+                saveBtnUI.TextColor3 = customUiConfig.textColor
+                saveBtnUI.Font = Enum.Font.Gotham
                 saveBtnUI.TextSize = customUiConfig.textSize
                 table.insert(managedTextObjects, saveBtnUI)
+                table.insert(managedInteractiveButtons, saveBtnUI)
                 
-                local speedText = (save.speedScaled == false) and " (Fixed)" or ""
-                local hipText = (save.hipHeightEnabled) and " [Hip]" or ""
-                saveBtnUI.Text = save.name .. speedText .. hipText
-                
+                saveBtnUI.Text = save.name .. ((save.speedScaled == false) and " (Fixed)" or "")
                 local c = Instance.new("UICorner", saveBtnUI)
-                c.CornerRadius = UDim.new(0, 4)
+                c.CornerRadius = UDim.new(0, 6)
+                addProfessionalStroke(saveBtnUI)
                 
                 saveBtnUI.MouseButton1Click:Connect(function()
+                    tallEnabled = false 
+                    btnTall.Text = "Tall: OFF"
+                    shortEnabled = false 
+                    btnShort.Text = "Short: OFF"
                     box.Text = save.id
-                    local sScaled = (save.speedScaled == true)
-                    local hEnabled = (save.hipHeightEnabled == true)
-                    
-                    isSpeedScaled = sScaled
-                    mSpeedBtn.Text = "Speed Scaled: " .. (isSpeedScaled and "ON" or "OFF")
-                    
-                    loadAnim(save.id, sScaled, hEnabled)
+                    loadAnim(save.id, save.speedScaled == true, false)
                     enabled = true
                     btn.Text = "Stop"
                     startAnimLoop()
-                    
-                    say("Loaded override: " .. save.name)
                 end)
-                
-                saveBtnUI.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                        openDeleteModal(i, save.name)
-                    end
-                end)
+                saveBtnUI.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then openDeleteModal(i, save.name) end end)
             else
                 poseCount = poseCount + 1
                 local saveBtnUI = Instance.new("TextButton", scrollPoses)
-                saveBtnUI.Size = UDim2.fromOffset(210, 28)
+                saveBtnUI.Size = UDim2.fromOffset(205, 28)
                 saveBtnUI.Position = UDim2.fromOffset(10, (poseCount - 1) * 32 + 5)
-                saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-                saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
-                saveBtnUI.Font = Enum.Font.SourceSans
+                saveBtnUI.BackgroundColor3 = customUiConfig.textBgColor
+                saveBtnUI.TextColor3 = customUiConfig.textColor
+                saveBtnUI.Font = Enum.Font.Gotham
                 saveBtnUI.TextSize = customUiConfig.textSize
                 table.insert(managedTextObjects, saveBtnUI)
+                table.insert(managedInteractiveButtons, saveBtnUI)
                 
-                saveBtnUI.Text = save.name .. " (Pose/Dance)"
-                
+                saveBtnUI.Text = save.name .. " (Pose)"
                 local c = Instance.new("UICorner", saveBtnUI)
-                c.CornerRadius = UDim.new(0, 4)
+                c.CornerRadius = UDim.new(0, 6)
+                addProfessionalStroke(saveBtnUI)
                 
                 saveBtnUI.MouseButton1Click:Connect(function()
+                    tallEnabled = false 
+                    btnTall.Text = "Tall: OFF"
+                    shortEnabled = false 
+                    btnShort.Text = "Short: OFF"
                     box.Text = save.id
-                    playOneUsePose(save.id)
+                    loadAnim(save.id, false, true)
+                    enabled = true
+                    btn.Text = "Stop"
+                    startAnimLoop()
                 end)
-                
-                saveBtnUI.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                        openDeleteModal(i, save.name)
-                    end
-                end)
+                saveBtnUI.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then openDeleteModal(i, save.name) end end)
             end
         end
     end
-    
     scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, overrideCount * 32)
     scrollPoses.CanvasSize = UDim2.new(0, 0, 0, poseCount * 32)
 end
 
-searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-    refreshSavesUI()
-end)
-
+searchBox:GetPropertyChangedSignal("Text"):Connect(function() refreshSavesUI() end)
 refreshSavesUI()
 
-local function openModal()
-    mNameBox.Text = ""
-    mIdBox.Text = ""
+btnOpenModal.MouseButton1Click:Connect(function()
+    mNameBox.Text = "" 
+    mIdBox.Text = "" 
     popupOverlay.Visible = true
     modalFrame.Size = UDim2.fromOffset(0, 0)
-    TweenService:Create(modalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.fromOffset(300, isOverrideMode and 330 or 260)
-    }):Play()
-end
+    TweenService:Create(modalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(300, 330)}):Play()
+end)
 
-local function closeModal()
-    local tween = TweenService:Create(modalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-        Size = UDim2.fromOffset(0, 0)
-    })
-    tween:Play()
-    tween.Completed:Connect(function()
-        popupOverlay.Visible = false
-        mNameBox.Text = ""
-        mIdBox.Text = ""
-    end)
-end
-
-btnOpenModal.MouseButton1Click:Connect(openModal)
-mCancelBtn.MouseButton1Click:Connect(closeModal)
+mCancelBtn.MouseButton1Click:Connect(function()
+    local tween = TweenService:Create(modalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.fromOffset(0, 0)})
+    tween:Play() 
+    tween.Completed:Connect(function() popupOverlay.Visible = false end)
+end)
 
 mConfirmBtn.MouseButton1Click:Connect(function()
     local animName = mNameBox.Text
     local animId = mIdBox.Text:match("%d+")
-    
     if animName ~= "" and animId then
-        table.insert(saveData.customSaves, {
-            name = animName, 
-            id = animId, 
-            isOverride = isOverrideMode,
-            speedScaled = isOverrideMode and isSpeedScaled or true,
-            hipHeightEnabled = isOverrideMode and isHipHeightEnabled or false
-        })
-        saveSavesToFile()
+        table.insert(saveData.customSaves, {name = animName, id = animId, isOverride = isOverrideMode, speedScaled = isSpeedScaled})
+        saveSavesToFile() 
         refreshSavesUI()
-        closeModal()
+        local tween = TweenService:Create(modalFrame, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.fromOffset(0, 0)})
+        tween:Play() 
+        tween.Completed:Connect(function() popupOverlay.Visible = false end)
         say("Saved custom animation!")
     else
         say("Error: Enter valid name and ID.")
     end
 end)
 
-local function applyTallPose()
-    if not animator then return end
-    if tallTrack then
-        pcall(function() tallTrack:Stop() end)
-        tallTrack:Destroy()
-        tallTrack = nil
-    end
-
-    local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://92807081069528"
-    
-    local ok, newTrack = pcall(function()
-        return animator:LoadAnimation(a)
-    end)
-    
-    a:Destroy()
-
-    if ok and newTrack then
-        tallTrack = newTrack
-        tallTrack.Priority = Enum.AnimationPriority.Action4 
-        tallTrack.Looped = true
-        
-        pcall(function()
-            tallTrack:Play(0.1, 1, 0)
-        end)
-        
-        task.delay(0.1, function()
-            if tallTrack and tallEnabled then
-                freezePoseTrack(tallTrack)
-            end
-        end)
-        
-        if not globalLoopConn then startAnimLoop() end
-        say("Tall: ON")
-    else
-        tallEnabled = false
-        btnTall.Text = "Tall: OFF"
-    end
-end
-
-local function removeTallPose()
-    if tallTrack then
-        pcall(function() tallTrack:Stop() end)
-        tallTrack:Destroy()
-        tallTrack = nil
-    end
-    say("Tall: OFF")
-    if not enabled and globalLoopConn and not tallEnabled and not shortEnabled then
-        globalLoopConn:Disconnect()
-        globalLoopConn = nil
-    end
-end
-
-local function applyShortPose()
-    if not animator then return end
-    if shortTrack then
-        pcall(function() shortTrack:Stop() end)
-        shortTrack:Destroy()
-        shortTrack = nil
-    end
-
-    local a = Instance.new("Animation")
-    a.AnimationId = "rbxassetid://137317695640929"
-    
-    local ok, newTrack = pcall(function()
-        return animator:LoadAnimation(a)
-    end)
-    
-    a:Destroy()
-
-    if ok and newTrack then
-        shortTrack = newTrack
-        shortTrack.Priority = Enum.AnimationPriority.Action4 
-        shortTrack.Looped = true
-        
-        pcall(function()
-            shortTrack:Play(0.1, 1, 0)
-        end)
-        
-        task.delay(0.1, function()
-            if shortTrack and shortEnabled then
-                freezePoseTrack(shortTrack)
-            end
-        end)
-        
-        if not globalLoopConn then startAnimLoop() end
-        say("Short: ON")
-    else
-        shortEnabled = false
-        btnShort.Text = "Short: OFF"
-    end
-end
-
-local function removeShortPose()
-    if shortTrack then
-        pcall(function() shortTrack:Stop() end)
-        shortTrack:Destroy()
-        shortTrack = nil
-    end
-    say("Short: OFF")
-    if not enabled and globalLoopConn and not tallEnabled and not shortEnabled then
-        globalLoopConn:Disconnect()
-        globalLoopConn = nil
-    end
-end
-
 local function bind(char)
     humanoid = char:WaitForChild("Humanoid", 5)
-    if not humanoid then return end
-    
-    originalWalkSpeed = humanoid.WalkSpeed
-    
-    originalHipHeight = humanoid.HipHeight
-    isHipHeightActive = false
-    currentExtraHipHeight = 0
-    
-    if updateWalkSpeedSlider then
-        if isWalkSpeedActive then
-            updateWalkSpeedSlider(currentWalkSpeed, false)
-        else
-            updateWalkSpeedSlider(originalWalkSpeed, true)
-        end
+    if not humanoid then
+        return
     end
-    
+
+    originalWalkSpeed = 16
+    currentWalkSpeed = originalWalkSpeed
+    isWalkSpeedActive = false
+
     rootPart = char:WaitForChild("HumanoidRootPart", 5)
     animator = humanoid:WaitForChild("Animator", 5)
+
     track = nil
-    tallTrack = nil
-    shortTrack = nil
-    tallEnabled = false
-    shortEnabled = false
+    poseTrack = nil
+    tallEnabled = false 
     btnTall.Text = "Tall: OFF"
+    shortEnabled = false 
     btnShort.Text = "Short: OFF"
+
     btnToggleSaves.Text = "Custom Saves: OFF"
-    
-    detectAntiCheatAndStartLoop()
     startAnimLoop()
 end
 
 btn.MouseButton1Click:Connect(function()
     if not enabled then
-        if not track and box.Text ~= "" then loadAnim(box.Text, isSpeedScaled, false) end
-        if not track then
-            say("Load an animation first.")
-            return
-        end
+        if not track and not poseTrack and box.Text ~= "" then loadAnim(box.Text, isSpeedScaled, false) end
+        if not track and not poseTrack then say("Load an animation first.") return end
     end
-    
     enabled = not enabled
     btn.Text = enabled and "Stop" or "Play"
-    
-    if enabled then
+    if enabled then 
+        tallEnabled = false 
+        btnTall.Text = "Tall: OFF"
+        shortEnabled = false 
+        btnShort.Text = "Short: OFF"
         startAnimLoop()
     else
-        if track then 
-            pcall(function() 
-                track:Stop(0.1)
-                track:Destroy()
-            end) 
-            track = nil
-        end
+        if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+        if poseTrack then pcall(function() poseTrack:Stop(0.1) poseTrack:Destroy() end) poseTrack = nil end
         if eventConn then eventConn:Disconnect(); eventConn = nil end
-        
-        applyHipHeight(false)
-        box.Text = "" -- Clears out the Animation ID textbox when stopped
-        
-        if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-            task.delay(0.05, function()
-                if animator then
-                    for _, t in ipairs(animator:GetPlayingAnimationTracks()) do
-                        pcall(function() t:AdjustWeight(1) end)
-                    end
-                end
-            end)
-        end
-        
-        say("Custom override stopped.")
+        box.Text = ""
+        say("Custom animation stopped.")
     end
-end)
-
-btnTall.MouseButton1Click:Connect(function()
-    tallEnabled = not tallEnabled
-    btnTall.Text = "Tall: " .. (tallEnabled and "ON" or "OFF")
-    if tallEnabled then applyTallPose() else removeTallPose() end
-end)
-
-btnShort.MouseButton1Click:Connect(function()
-    shortEnabled = not shortEnabled
-    btnShort.Text = "Short: " .. (shortEnabled and "ON" or "OFF")
-    if shortEnabled then applyShortPose() else removeShortPose() end
 end)
 
 btnToggleSaves.MouseButton1Click:Connect(function()
@@ -2228,38 +2256,24 @@ btnToggleSaves.MouseButton1Click:Connect(function()
     btnToggleSaves.Text = "Custom Saves: " .. (savesFrame.Visible and "ON" or "OFF")
 end)
 
-box.FocusLost:Connect(function()
-    loadAnim(box.Text, isSpeedScaled, false)
+box.FocusLost:Connect(function() 
+    tallEnabled = false 
+    btnTall.Text = "Tall: OFF"
+    shortEnabled = false 
+    btnShort.Text = "Short: OFF"
+    loadAnim(box.Text, isSpeedScaled, false) 
 end)
 
 plr.CharacterAdded:Connect(function(char)
     if globalLoopConn then globalLoopConn:Disconnect(); globalLoopConn = nil end
-    if walkSpeedConn then walkSpeedConn:Disconnect(); walkSpeedConn = nil end
-    if eventConn then eventConn:Disconnect(); eventConn = nil end
-    if tallTrack then pcall(function() tallTrack:Stop() end); tallTrack = nil end
-    if shortTrack then pcall(function() shortTrack:Stop() end); shortTrack = nil end
-    enabled = false
-    tallEnabled = false
-    shortEnabled = false
-    isHipHeightActive = false
-    btn.Text = "Play"
-    btnTall.Text = "Tall: OFF"
-    btnShort.Text = "Short: OFF"
-    btnToggleSaves.Text = "Custom Saves: OFF"
-    box.Text = ""
-    savesFrame.Visible = false
-    optionsModalOverlay.Visible = false
-    colorModalOverlay.Visible = false
+    enabled = false 
+    box.Text = "" 
+    savesFrame.Visible = false 
+    optionsModalOverlay.Visible = false 
     popupOverlay.Visible = false
-    speedModalOverlay.Visible = false
-    deleteModalOverlay.Visible = false
-    precisionOverlay.Visible = false
-    task.wait(0.5)
+    task.wait(0.5) 
     bind(char)
 end)
 
-if plr.Character then
-    bind(plr.Character)
-end
-
+if plr.Character then bind(plr.Character) end
 updateUiThemeAndScale()

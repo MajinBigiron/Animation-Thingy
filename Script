@@ -12,7 +12,7 @@ local HIGH = Enum.AnimationPriority.Action4
 -- === Speed & Movement Configuration ===
 local MIN_ANIM_SPEED = 0.001 
 local MAX_ANIM_SPEED = 5.0 
-local STATIONARY_REST_TIME = 0.5 -- Change this number (in seconds) to pick the exact frame/timestamp where limbs rest on the ground for overrides
+local STATIONARY_REST_TIME = 0.5 
 
 local originalWalkSpeed = 16
 local currentWalkSpeed = 16
@@ -23,6 +23,14 @@ local maxWalkSpeedLimit = 100
 local minWalkSpeedLimit = 1
 local maxAnimSpeedLimit = 5.0
 local minAnimSpeedLimit = 0.1
+
+-- Customization Configuration Storage
+local customUiConfig = {
+    height = 415,
+    textSize = 14,
+    bgColor = Color3.fromRGB(25, 25, 25),
+    bgTransparency = 0.0
+}
 
 -- Flag to track whether custom walkspeed looping/modifying is active
 local isWalkSpeedActive = false
@@ -46,7 +54,15 @@ local saveData = {
     maxWalkSpeedLimit = 100,
     minWalkSpeedLimit = 1,
     maxAnimSpeedLimit = 5.0,
-    minAnimSpeedLimit = 0.1
+    minAnimSpeedLimit = 0.1,
+    uiConfig = {
+        height = 415,
+        textSize = 14,
+        bgR = 25,
+        bgG = 25,
+        bgB = 25,
+        bgTransparency = 0.0
+    }
 }
 
 local function normaliseLimits()
@@ -88,6 +104,13 @@ local function loadSavesFromFile()
             if decoded.minAnimSpeedLimit ~= nil then
                 minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit
             end
+            
+            if decoded.uiConfig then
+                customUiConfig.height = decoded.uiConfig.height or 415
+                customUiConfig.textSize = decoded.uiConfig.textSize or 14
+                customUiConfig.bgColor = Color3.fromRGB(decoded.uiConfig.bgR or 25, decoded.uiConfig.bgG or 25, decoded.uiConfig.bgB or 25)
+                customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.0
+            end
         end
     end)
 
@@ -101,6 +124,14 @@ local function saveSavesToFile()
             saveData.minWalkSpeedLimit = minWalkSpeedLimit
             saveData.maxAnimSpeedLimit = maxAnimSpeedLimit
             saveData.minAnimSpeedLimit = minAnimSpeedLimit
+            saveData.uiConfig = {
+                height = customUiConfig.height,
+                textSize = customUiConfig.textSize,
+                bgR = math.floor(customUiConfig.bgColor.R * 255 + 0.5),
+                bgG = math.floor(customUiConfig.bgColor.G * 255 + 0.5),
+                bgB = math.floor(customUiConfig.bgColor.B * 255 + 0.5),
+                bgTransparency = customUiConfig.bgTransparency
+            }
             writefile(SAVE_FILE_NAME, HttpService:JSONEncode(saveData))
         end
     end)
@@ -180,9 +211,10 @@ end)
 
 -- Main Control Panel (Left Middle)
 local mainFrame = Instance.new("Frame", gui)
-mainFrame.Size = UDim2.fromOffset(250, 415)
-mainFrame.Position = UDim2.new(0, 20, 0.5, -207.5)
-mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
+mainFrame.Position = UDim2.new(0, 20, 0.5, -customUiConfig.height / 2)
+mainFrame.BackgroundColor3 = customUiConfig.bgColor
+mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
 mainFrame.BorderSizePixel = 0
 
 local mainCorner = Instance.new("UICorner", mainFrame)
@@ -192,12 +224,26 @@ mainCorner.CornerRadius = UDim.new(0, 8)
 local savesFrame = Instance.new("Frame", gui)
 savesFrame.Size = UDim2.fromOffset(250, 345)
 savesFrame.Position = UDim2.new(1, -270, 0.5, -172.5)
-savesFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+savesFrame.BackgroundColor3 = customUiConfig.bgColor
+savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
 savesFrame.BorderSizePixel = 0
 savesFrame.Visible = false
 
 local savesCorner = Instance.new("UICorner", savesFrame)
 savesCorner.CornerRadius = UDim.new(0, 8)
+
+-- Options Menu Panel (Appears next to top right of main frame)
+local optionsFrame = Instance.new("Frame", gui)
+optionsFrame.Size = UDim2.fromOffset(230, 270)
+optionsFrame.Position = UDim2.new(0, 280, 0.5, -135)
+optionsFrame.BackgroundColor3 = customUiConfig.bgColor
+optionsFrame.BackgroundTransparency = customUiConfig.bgTransparency
+optionsFrame.BorderSizePixel = 0
+optionsFrame.Visible = false
+optionsFrame.ZIndex = 50
+
+local optionsCorner = Instance.new("UICorner", optionsFrame)
+optionsCorner.CornerRadius = UDim.new(0, 8)
 
 -- Smooth Pop-In/Pop-Out Modal Popup (Center Screen)
 local popupOverlay = Instance.new("Frame", gui)
@@ -211,7 +257,8 @@ local modalFrame = Instance.new("Frame", popupOverlay)
 modalFrame.Size = UDim2.fromOffset(300, 330)
 modalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 modalFrame.Position = UDim2.fromScale(0.5, 0.5)
-modalFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+modalFrame.BackgroundColor3 = customUiConfig.bgColor
+modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
 modalFrame.BorderSizePixel = 0
 modalFrame.ZIndex = 11
 
@@ -230,7 +277,8 @@ local deleteModalFrame = Instance.new("Frame", deleteModalOverlay)
 deleteModalFrame.Size = UDim2.fromOffset(280, 160)
 deleteModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 deleteModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-deleteModalFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
 deleteModalFrame.BorderSizePixel = 0
 deleteModalFrame.ZIndex = 41
 
@@ -249,7 +297,8 @@ local speedModalFrame = Instance.new("Frame", speedModalOverlay)
 speedModalFrame.Size = UDim2.fromOffset(280, 250)
 speedModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 speedModalFrame.Position = UDim2.fromScale(0.5, 0.5)
-speedModalFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+speedModalFrame.BackgroundColor3 = customUiConfig.bgColor
+speedModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
 speedModalFrame.BorderSizePixel = 0
 speedModalFrame.ZIndex = 21
 
@@ -268,7 +317,8 @@ local precisionContainer = Instance.new("Frame", precisionOverlay)
 precisionContainer.Size = UDim2.new(0.9, 0, 0, 100)
 precisionContainer.AnchorPoint = Vector2.new(0.5, 0.5)
 precisionContainer.Position = UDim2.fromScale(0.5, 0.5)
-precisionContainer.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+precisionContainer.BackgroundColor3 = customUiConfig.bgColor
+precisionContainer.BackgroundTransparency = customUiConfig.bgTransparency
 precisionContainer.BorderSizePixel = 0
 precisionContainer.ZIndex = 31
 
@@ -342,6 +392,8 @@ local function makeDraggable(frame, handle)
     end)
 end
 
+local managedTextObjects = {}
+
 local function mk(parent, cls, y, h, text)
     local o = Instance.new(cls, parent)
     o.Size = UDim2.fromOffset(230, h)
@@ -349,13 +401,14 @@ local function mk(parent, cls, y, h, text)
     o.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     o.TextColor3 = Color3.new(1, 1, 1)
     o.Font = Enum.Font.SourceSansSemibold
-    o.TextSize = 14
+    o.TextSize = customUiConfig.textSize
     if text then o.Text = text end
     
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = o
     
+    table.insert(managedTextObjects, o)
     return o
 end
 
@@ -366,7 +419,7 @@ local function mkModal(parent, cls, x, y, w, h, text)
     o.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     o.TextColor3 = Color3.new(1, 1, 1)
     o.Font = Enum.Font.SourceSansSemibold
-    o.TextSize = 14
+    o.TextSize = customUiConfig.textSize
     o.ZIndex = 22
     if text then o.Text = text end
     
@@ -374,6 +427,7 @@ local function mkModal(parent, cls, x, y, w, h, text)
     corner.CornerRadius = UDim.new(0, 6)
     corner.Parent = o
     
+    table.insert(managedTextObjects, o)
     return o
 end
 
@@ -384,34 +438,183 @@ speedometerLabel.Position = UDim2.fromOffset(10, 10)
 speedometerLabel.BackgroundTransparency = 1
 speedometerLabel.TextColor3 = Color3.fromRGB(150, 220, 255)
 speedometerLabel.Font = Enum.Font.SourceSansBold
-speedometerLabel.TextSize = 13
+speedometerLabel.TextSize = math.max(10, customUiConfig.textSize - 1)
 speedometerLabel.TextXAlignment = Enum.TextXAlignment.Left
 speedometerLabel.Text = "Current Speed: 0.0"
+table.insert(managedTextObjects, speedometerLabel)
 
 -- === Speed Settings Header & Collapsible Sliders Container ===
 local speedTitle = Instance.new("TextLabel", mainFrame)
-speedTitle.Size = UDim2.fromOffset(150, 24)
+speedTitle.Size = UDim2.fromOffset(120, 24)
 speedTitle.Position = UDim2.fromOffset(10, 35)
 speedTitle.BackgroundTransparency = 1
 speedTitle.TextColor3 = Color3.fromRGB(200, 200, 200)
 speedTitle.Font = Enum.Font.SourceSansBold
-speedTitle.TextSize = 13
+speedTitle.TextSize = math.max(10, customUiConfig.textSize - 1)
 speedTitle.TextXAlignment = Enum.TextXAlignment.Left
 speedTitle.Text = "Speed Settings"
+table.insert(managedTextObjects, speedTitle)
 
 makeDraggable(mainFrame, speedTitle)
 
 local minimizeBtn = Instance.new("TextButton", mainFrame)
-minimizeBtn.Size = UDim2.fromOffset(60, 24)
-minimizeBtn.Position = UDim2.fromOffset(180, 35)
+minimizeBtn.Size = UDim2.fromOffset(50, 24)
+minimizeBtn.Position = UDim2.fromOffset(140, 35)
 minimizeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 minimizeBtn.TextColor3 = Color3.new(1, 1, 1)
 minimizeBtn.Font = Enum.Font.SourceSansSemibold
-minimizeBtn.TextSize = 12
+minimizeBtn.TextSize = customUiConfig.textSize
 minimizeBtn.Text = "-"
+table.insert(managedTextObjects, minimizeBtn)
 
 local minCorner = Instance.new("UICorner", minimizeBtn)
 minCorner.CornerRadius = UDim.new(0, 4)
+
+-- Options Button (Top Right of Main Frame)
+local optionsBtn = Instance.new("TextButton", mainFrame)
+optionsBtn.Size = UDim2.fromOffset(24, 24)
+optionsBtn.Position = UDim2.fromOffset(216, 35)
+optionsBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+optionsBtn.TextColor3 = Color3.new(1, 1, 1)
+optionsBtn.Font = Enum.Font.SourceSansBold
+optionsBtn.TextSize = customUiConfig.textSize
+optionsBtn.Text = "⚙"
+table.insert(managedTextObjects, optionsBtn)
+
+local optCorner = Instance.new("UICorner", optionsBtn)
+optCorner.CornerRadius = UDim.new(0, 4)
+
+-- === Options Menu Layout ===
+local optTitle = Instance.new("TextLabel", optionsFrame)
+optTitle.Size = UDim2.fromOffset(210, 24)
+optTitle.Position = UDim2.fromOffset(10, 10)
+optTitle.BackgroundTransparency = 1
+optTitle.TextColor3 = Color3.fromRGB(255, 200, 60)
+optTitle.Font = Enum.Font.SourceSansBold
+optTitle.TextSize = 15
+optTitle.ZIndex = 51
+optTitle.Text = "UI Options Menu"
+
+-- Helper for options sliders/inputs
+local function createOptInput(yPos, labelText, defaultVal, callback)
+    local lbl = Instance.new("TextLabel", optionsFrame)
+    lbl.Size = UDim2.fromOffset(120, 20)
+    lbl.Position = UDim2.fromOffset(10, yPos)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.new(1, 1, 1)
+    lbl.Font = Enum.Font.SourceSansSemibold
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 51
+    lbl.Text = labelText
+
+    local box = Instance.new("TextBox", optionsFrame)
+    box.Size = UDim2.fromOffset(80, 22)
+    box.Position = UDim2.fromOffset(140, yPos)
+    box.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    box.TextColor3 = Color3.new(1, 1, 1)
+    box.Font = Enum.Font.SourceSansSemibold
+    box.TextSize = 12
+    box.Text = tostring(defaultVal)
+    box.ClearTextOnFocus = false
+    box.ZIndex = 51
+    local c = Instance.new("UICorner", box)
+    c.CornerRadius = UDim.new(0, 4)
+
+    box.FocusLost:Connect(function()
+        local val = tonumber(box.Text)
+        if val then
+            callback(val)
+        else
+            box.Text = tostring(defaultVal)
+        end
+    end)
+    return box
+end
+
+-- Refresh UI Theme and Scale dynamically
+local function updateUiThemeAndScale()
+    mainFrame.BackgroundColor3 = customUiConfig.bgColor
+    mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    savesFrame.BackgroundColor3 = customUiConfig.bgColor
+    savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    optionsFrame.BackgroundColor3 = customUiConfig.bgColor
+    optionsFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    modalFrame.BackgroundColor3 = customUiConfig.bgColor
+    modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    speedModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    speedModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    precisionContainer.BackgroundColor3 = customUiConfig.bgColor
+    precisionContainer.BackgroundTransparency = customUiConfig.bgTransparency
+
+    mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
+    for _, obj in ipairs(managedTextObjects) do
+        if obj and obj.Parent then
+            if obj ~= speedometerLabel and obj ~= speedTitle then
+                obj.TextSize = customUiConfig.textSize
+            end
+        end
+    end
+end
+
+createOptInput(42, "GUI Height", customUiConfig.height, function(val)
+    customUiConfig.height = math.clamp(val, 250, 600)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+createOptInput(72, "Text Size", customUiConfig.textSize, function(val)
+    customUiConfig.textSize = math.clamp(val, 10, 24)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+createOptInput(102, "BG Transparency", customUiConfig.bgTransparency, function(val)
+    customUiConfig.bgTransparency = math.clamp(val, 0, 0.95)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+local colLbl = Instance.new("TextLabel", optionsFrame)
+colLbl.Size = UDim2.fromOffset(210, 20)
+colLbl.Position = UDim2.fromOffset(10, 134)
+colLbl.BackgroundTransparency = 1
+colLbl.TextColor3 = Color3.new(1, 1, 1)
+colLbl.Font = Enum.Font.SourceSansSemibold
+colLbl.TextSize = 12
+colLbl.TextXAlignment = Enum.TextXAlignment.Left
+colLbl.ZIndex = 51
+colLbl.Text = "BG Color RGB (0-255):"
+
+local rBox = createOptInput(160, "Red", math.floor(customUiConfig.bgColor.R * 255 + 0.5), function(v)
+    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
+    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
+    customUiConfig.bgColor = Color3.fromRGB(math.clamp(v, 0, 255), g, b)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+local gBox = createOptInput(190, "Green", math.floor(customUiConfig.bgColor.G * 255 + 0.5), function(v)
+    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
+    local b = math.floor(customUiConfig.bgColor.B * 255 + 0.5)
+    customUiConfig.bgColor = Color3.fromRGB(r, math.clamp(v, 0, 255), b)
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+local bBox = createOptInput(220, "Blue", math.floor(customUiConfig.bgColor.B * 255 + 0.5), function(v)
+    local r = math.floor(customUiConfig.bgColor.R * 255 + 0.5)
+    local g = math.floor(customUiConfig.bgColor.G * 255 + 0.5)
+    customUiConfig.bgColor = Color3.fromRGB(r, g, math.clamp(v, 0, 255))
+    updateUiThemeAndScale()
+    saveSavesToFile()
+end)
+
+optionsBtn.MouseButton1Click:Connect(function()
+    optionsFrame.Visible = not optionsFrame.Visible
+end)
 
 local sliderContainer = Instance.new("Frame", mainFrame)
 sliderContainer.Size = UDim2.fromOffset(230, 90)
@@ -450,7 +653,7 @@ local function setSpeedMinimized(state)
         btnToggleSaves.Position = UDim2.fromOffset(10, 224)
         status.Position = UDim2.fromOffset(10, 264)
     else
-        mainFrame.Size = UDim2.fromOffset(250, 415)
+        mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
         box.Position = UDim2.fromOffset(10, 163)
         btn.Position = UDim2.fromOffset(10, 203)
         btnTall.Position = UDim2.fromOffset(10, 243)
@@ -478,6 +681,7 @@ speedModalTitle.Font = Enum.Font.SourceSansBold
 speedModalTitle.TextSize = 16
 speedModalTitle.Text = "Edit Speed"
 speedModalTitle.ZIndex = 22
+table.insert(managedTextObjects, speedModalTitle)
 
 local smValBox = mkModal(speedModalFrame, "TextBox", 20, 48, 240, 28)
 smValBox.PlaceholderText = "Manual Speed Value"
@@ -622,9 +826,10 @@ local function createSlider(
     label.BackgroundTransparency = 1
     label.TextColor3 = Color3.new(1, 1, 1)
     label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 13
+    label.TextSize = customUiConfig.textSize
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = sliderContainer
+    table.insert(managedTextObjects, label)
 
     local function formatLabelText(value, isResetState)
         if labelText == "Animation Speed"
@@ -657,9 +862,10 @@ local function createSlider(
     resetBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     resetBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
     resetBtn.Font = Enum.Font.SourceSansSemibold
-    resetBtn.TextSize = 11
+    resetBtn.TextSize = math.max(10, customUiConfig.textSize - 2)
     resetBtn.Text = "Reset"
     resetBtn.Parent = sliderContainer
+    table.insert(managedTextObjects, resetBtn)
 
     local resetCorner = Instance.new("UICorner")
     resetCorner.CornerRadius = UDim.new(0, 4)
@@ -703,8 +909,6 @@ local function createSlider(
     local wasPreviouslyMinimized = false
     local isHovered = false
 
-    -- Forward declaration is required because the input handlers are
-    -- connected before the function body is assigned.
     local updateValue
 
     local function cancelHold()
@@ -718,7 +922,6 @@ local function createSlider(
         local currentMin = tonumber(getMinLimit()) or 0
         local currentMax = tonumber(getMaxLimit()) or currentMin
 
-        -- Always keep math.clamp valid.
         currentMax = math.max(currentMin, currentMax)
 
         value = tonumber(value) or currentValHolder
@@ -764,7 +967,6 @@ local function createSlider(
         end
     end
 
-    -- Register the external slider update functions.
     if labelText == "WalkSpeed" then
         updateWalkSpeedSlider = function(newValue, isReset)
             updateValue(newValue, isReset == true)
@@ -775,7 +977,6 @@ local function createSlider(
         end
     end
 
-    -- Hovering anywhere over the slider bar enables mouse-wheel control.
     bar.MouseEnter:Connect(function()
         isHovered = true
     end)
@@ -784,7 +985,6 @@ local function createSlider(
         isHovered = false
     end)
 
-    -- MouseWheel is reported through InputChanged.
     UserInputService.InputChanged:Connect(function(input)
         if not isHovered then
             return
@@ -800,7 +1000,6 @@ local function createSlider(
             return
         end
 
-        -- One wheel notch changes the value by exactly one.
         local newValue = currentValHolder + (wheelDelta > 0 and 1 or -1)
 
         if labelText == "WalkSpeed" then
@@ -999,7 +1198,7 @@ searchBox.PlaceholderText = "Search custom animations..."
 searchBox.Text = ""
 searchBox.ClearTextOnFocus = false
 searchBox.Font = Enum.Font.SourceSans
-searchBox.TextSize = 12
+searchBox.TextSize = customUiConfig.textSize
 
 local overridesLabel = Instance.new("TextLabel", savesFrame)
 overridesLabel.Size = UDim2.fromOffset(230, 18)
@@ -1007,9 +1206,10 @@ overridesLabel.Position = UDim2.fromOffset(10, 88)
 overridesLabel.BackgroundTransparency = 1
 overridesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 overridesLabel.Font = Enum.Font.SourceSansBold
-overridesLabel.TextSize = 12
+overridesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
 overridesLabel.TextXAlignment = Enum.TextXAlignment.Left
 overridesLabel.Text = "Overrides / Loops:"
+table.insert(managedTextObjects, overridesLabel)
 
 makeDraggable(savesFrame, overridesLabel)
 
@@ -1028,9 +1228,10 @@ posesLabel.Position = UDim2.fromOffset(10, 200)
 posesLabel.BackgroundTransparency = 1
 posesLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 posesLabel.Font = Enum.Font.SourceSansBold
-posesLabel.TextSize = 12
+posesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
 posesLabel.TextXAlignment = Enum.TextXAlignment.Left
 posesLabel.Text = "Pose/Dance (Right-Click to Delete):"
+table.insert(managedTextObjects, posesLabel)
 
 local scrollPoses = Instance.new("ScrollingFrame", savesFrame)
 scrollPoses.Size = UDim2.fromOffset(230, 85)
@@ -1533,7 +1734,8 @@ function refreshSavesUI()
                 saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
                 saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
                 saveBtnUI.Font = Enum.Font.SourceSans
-                saveBtnUI.TextSize = 13
+                saveBtnUI.TextSize = customUiConfig.textSize
+                table.insert(managedTextObjects, saveBtnUI)
                 
                 local speedText = (save.speedScaled == false) and " (Fixed)" or ""
                 local hipText = (save.hipHeightEnabled) and " [Hip]" or ""
@@ -1571,7 +1773,8 @@ function refreshSavesUI()
                 saveBtnUI.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
                 saveBtnUI.TextColor3 = Color3.new(1, 1, 1)
                 saveBtnUI.Font = Enum.Font.SourceSans
-                saveBtnUI.TextSize = 13
+                saveBtnUI.TextSize = customUiConfig.textSize
+                table.insert(managedTextObjects, saveBtnUI)
                 
                 saveBtnUI.Text = save.name .. " (Pose/Dance)"
                 
@@ -1865,6 +2068,7 @@ plr.CharacterAdded:Connect(function(char)
     btnToggleSaves.Text = "Custom Saves: OFF"
     box.Text = ""
     savesFrame.Visible = false
+    optionsFrame.Visible = false
     popupOverlay.Visible = false
     speedModalOverlay.Visible = false
     deleteModalOverlay.Visible = false
@@ -1876,3 +2080,5 @@ end)
 if plr.Character then
     bind(plr.Character)
 end
+
+updateUiThemeAndScale()

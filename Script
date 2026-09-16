@@ -1,1069 +1,2897 @@
-local RunService = game:GetService("RunService")
-
+-- === Services ===
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
+local StarterGui = game:GetService("StarterGui")
 
-local UIS = game:GetService("UserInputService")
-local SelectedFolder = nil
-local CycleKeybind = Enum.KeyCode.X
+local plr = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+local HIGH = Enum.AnimationPriority.Action4
 
-local URL = "https://raw.githubusercontent.com/artxficial/matchastuff/main/esp_utility.lua"
-local ImportESP = loadstring(game:HttpGet(URL))()
+local MIN_ANIM_SPEED = 0.001 
+local MAX_ANIM_SPEED = 5.0 
+local STATIONARY_REST_TIME = 0.5 
 
-local URL = "https://raw.githubusercontent.com/artxficial/matchastuff/main/animationtracker.lua"
-local ImportAnimationTracker = loadstring(game:HttpGet(URL))()
+local originalWalkSpeed = 16
+local currentWalkSpeed = 16
+local currentAnimMultiplier = 1.0
 
-local UI_Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/neaxusxgod-png/INS-ui/main/uilib.min.lua"))() or INSui
+local maxWalkSpeedLimit = 100
+local minWalkSpeedLimit = 1
+local maxAnimSpeedLimit = 5.0
+local minAnimSpeedLimit = 0.1
 
-local AnimationsLoggedCache = {}
-local AnimationsLoggedOrder = {}
-
-
--- ==========================================
--- Game Configuration
--- ==========================================
-local GameConfig = {
-    ["Karate"] = {
-        ["rbxassetid://105109868069470"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["rbxassetid://111317285324171"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://86918714359440"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://130884585830171"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.3,
-        },
-        ["rbxassetid://77957614227468"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["M1Time"] = 0.08
-    },
-
-    ["Wrestling"] = {
-        ["rbxassetid://103849336431154"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://132178222366446"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://128114472490928"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["rbxassetid://138624221040888"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://134616225320869"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.3,
-        },
-    },
-
-    ["Capoeira"] = {
-        ["rbxassetid://114254289386168"] = {
-            ["DisplayName"] = "M2",
-        },
-        ["rbxassetid://85098647244472"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://127253080182564"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://97280263199117"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://136563726541554"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-    },
-
-    ["Boxing"] = {
-        ["rbxassetid://140559915903523"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["rbxassetid://82164598010704"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://103379337847201"] = {
-            ["DisplayName"] = "M2",
-            ["ParryFunction"] = function(mob, anim)
-                task.wait(.15)
-                Dodge()
-                BlockStart(1)
-            end,
-        },
-        ["rbxassetid://73977397773505"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://82475370801539"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["M1Time"] = 0.08,
-    },
-
-    ["MuayThai"] = {
-        ["rbxassetid://87171697393871"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://73865503612362"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://75692393601509"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://101188641038819"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.3,
-        },
-        ["rbxassetid://140530278540076"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["M1Time"] = 0.08
-    },
-
-    ["Basic"] = {
-        ["rbxassetid://139875456638239"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://95363684987743"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["rbxassetid://133112087379005"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://95267170062803"] = {
-            ["DisplayName"] = "1stM1",
-
-        },
-        ["rbxassetid://128479795877497"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.3,
-        },
-        ["M1Time"] = 0.09,
-    },
-
-    ["Hakari"] = {
-        ["rbxassetid://127631232991111"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-        ["rbxassetid://71447243477669"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://95359912376713"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://73898520591442"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://137330597899886"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.4,
-        },
-        ["M1Time"] = 0.23,
-    },
-
-    ["Slugger"] = {
-        ["rbxassetid://83785650808219"] = {
-            ["DisplayName"] = "4thM1",
-        },
-        ["rbxassetid://135304344348112"] = {
-            ["DisplayName"] = "1stM1",
-        },
-        ["rbxassetid://116328113967477"] = {
-            ["DisplayName"] = "M2",
-            ["ParryTime"] = 0.3,
-        },
-        ["rbxassetid://73329541283787"] = {
-            ["DisplayName"] = "3rdM1",
-        },
-        ["rbxassetid://136278929175728"] = {
-            ["DisplayName"] = "2ndM1",
-        },
-    },
+local customUiConfig = {
+    height = 360,
+    textSize = 14,
+    bgColor = Color3.fromRGB(16, 16, 19),
+    textColor = Color3.fromRGB(240, 240, 245),
+    textBgColor = Color3.fromRGB(24, 24, 28),
+    sliderColor = Color3.fromRGB(120, 180, 255),
+    bgTransparency = 0.03
 }
 
-local IgnoreIds = {
-    180435571, 77037085189412, 111739374926782, 92218577286252, 88814596463534, 94307187478472, 131740405511777, 113277528668896, 127932830797262, 87009475658015,
-    84132789609149, 76237453354893, 110944743758456, 90161235331608, 71328060282201, 70801611347749, 92721542799601, 114022632969886, 73180081197317, 75644992544295,
-    103744847837206, 88693927556992, 119205616767284, 74307681662213, 125407107465324, 114428811318993, 140108556120577, 120602677843661, 138017825490326,
-    97030309083412, 92350233065594, 98594326229350, 120872751791447, 74012428122749, 112324027284107, 125730080363063, 119492079078333, 90051791494312, 131486283235836,
-    103814914375577, 108723830385066, 71363952449940, 84784245080026, 117218374921934, 101586979349575, 135120557110545, 129562168379976,
-    127235326504466,70711665166729,134852521037165,104108168085403,71737326453540,127795727123111,97281557267119,81977030245036,116895075223460
+local isWalkSpeedActive = false
+local isAnimSpeedActive = false
+
+local activeAnimConfig = {
+    speedScaled = true,
+    isPose = false
 }
-local ParriedAnimation = {"rbxassetid://5645212799", "rbxassetid://5806082960", "rbxassetid://100773926241456", "rbxassetid://102823909334302"}
-local StunnedAnimation = {"rbxassetid://9598562590", "rbxassetid://9598537410", "rbxassetid://9598551746"}
 
-local AutoParryRange = 10
-local MaxCycleRange = 20
-local ParryWindow = 0.1
-local DefaultParryTime = 0.1
-local ReleaseTime = 0.3
-local CooldownTime = 0.1
+local SAVE_FILE_NAME = "AnimOverride_CustomSaves.json"
+local saveData = {
+    customSaves = {},
+    uiSaveSlots = {},
+    maxWalkSpeedLimit = 100,
+    minWalkSpeedLimit = 1,
+    maxAnimSpeedLimit = 5.0,
+    minAnimSpeedLimit = 0.1,
+    uiConfig = {
+        height = 360,
+        textSize = 14,
+        bgR = 16, bgG = 16, bgB = 19,
+        textR = 240, textG = 240, textB = 245,
+        textBgR = 24, textBgG = 24, textBgB = 28,
+        sliderR = 120, sliderG = 180, sliderB = 255,
+        bgTransparency = 0.03
+    }
+}
 
+local humanoid = nil
+local animator = nil
+local rootPart = nil
+local track = nil
+local poseTrack = nil
+local walkSpeedConn = nil
+local originalHipHeight = 0
+local isExtraHipHeightActive = false
+local activeFullSetConnection = nil
+local activeFullSetTracks = {}
 
--- ==========================================
-local FlattenedConfig = {}
-
-for styleName, assets in pairs(GameConfig) do
-    local defaultM1Time = assets["M1Time"] or DefaultParryTime
-
-    for assetId, data in pairs(assets) do
-        if assetId == "M1Time" then continue end
-        
-        local flatData = table.clone(data) or {}  
-        flatData.Style = styleName        
-        flatData.M1Time = defaultM1Time
-        
-        FlattenedConfig[assetId] = flatData
-    end
+local function normaliseLimits()
+    minWalkSpeedLimit = math.max(0, tonumber(minWalkSpeedLimit) or 1)
+    maxWalkSpeedLimit = math.max(minWalkSpeedLimit, tonumber(maxWalkSpeedLimit) or 100)
+    minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, tonumber(minAnimSpeedLimit) or 0.1)
+    maxAnimSpeedLimit = math.max(minAnimSpeedLimit, tonumber(maxAnimSpeedLimit) or MAX_ANIM_SPEED)
 end
 
-GameConfig = FlattenedConfig
+local function loadSavesFromFile()
+    pcall(function()
+        if readfile and isfile and isfile(SAVE_FILE_NAME) then
+            local content = readfile(SAVE_FILE_NAME)
+            local decoded = HttpService:JSONDecode(content)
+            if type(decoded) ~= "table" then return end
 
-local function GetAllFoldersInWorkspace()
-    local Folders = {}
-
-    for _, Folder in game.Workspace:GetChildren() do  
-        if Folder.ClassName == "Folder" then
-            table.insert(Folders, Folder.Name)
-        end
-    end
-
-    return Folders
-end
-
-local function GetAllCharactersInFolder()
-    if not SelectedFolder or not game.Workspace:FindFirstChild(SelectedFolder) then UI_Library:Notify("ERROR", "Select a folder first") return end 
-    
-
-    local Characters = {}
-    local SelectedFolder = game.Workspace[SelectedFolder]
-
-
-    for _, Character in SelectedFolder:GetChildren() do  
-        if Character.ClassName == "Model" and Character:FindFirstChildWhichIsA("Humanoid") then
-            if not IncludeLocalCharacter then 
-                if Character.Address == game.Players.LocalPlayer.Character.Address then continue end 
+            if type(decoded.customSaves) == "table" then
+                saveData.customSaves = decoded.customSaves
+            else
+                saveData.customSaves = decoded
             end
-            table.insert(Characters, Character)
-        end
-    end
 
-    return Characters
-end
+            if type(decoded.uiSaveSlots) == "table" then
+                saveData.uiSaveSlots = decoded.uiSaveSlots
+            end
 
-local function SetClipboardLoggedCache()
-    local totalItems = #AnimationsLoggedOrder
-    if totalItems == 0 then
-        print("[Clipboard] Nothing logged to copy.")
-        return
-    end
-
-    local ids = {}
-    for i = 1, totalItems do
-        -- Extract only the numbers from the asset ID string
-        local numericId = tostring(AnimationsLoggedOrder[i]):match("%d+")
-        if numericId then
-            table.insert(ids, numericId)
-        end
-    end
-
-    -- Join them cleanly with commas
-    local clipboardString = table.concat(ids, ",")
-    
-    setclipboard(clipboardString)
-    print(string.format("[Clipboard] Successfully copied %d logged animation IDs!", #ids))
-    UI_Library:Notify("Clipboard", string.format("Successfully copied %d logged animation IDs!", #ids))
-end
-
-local scheduler = {}
-local pendingTasks = {}
-
-function scheduler.delay(delayTime, callback)
-    table.insert(pendingTasks, {
-        executeAt = os.clock() + delayTime,
-        callback = callback
-    })
-end
-
-function scheduler.update()
-    local now = os.clock()
-    for i = #pendingTasks, 1, -1 do
-        local task = pendingTasks[i]
-        if now >= task.executeAt then
-            table.remove(pendingTasks, i)
-            -- Run the function safely in a separate thread context
-            coroutine.wrap(task.callback)()
-        end
-    end
-end
-
--- ==========================================
-
--- ==========================================
-
-
-local UI_Window = UI_Library:CreateWindow({ title = "Cold Auto Parry", size = Vector2.new(700, 540) })
-
-local AP_Tab = UI_Window:Tab("Auto Parry", "swords")
-local Config_Tab = UI_Window:Tab("Style Configurations", "swords")
-
-local Folders_Section = AP_Tab:Section("Folders", "Left")
-local AP_Section = AP_Tab:Section("Auto Parry Configuration", "Right")
-local ClipboardSection = AP_Tab:Section("Logging", "Right")
-
-local ConfigSection_Left = Config_Tab:Section("Left", "Left")
-local ConfigSection_Right = Config_Tab:Section("Right", "Right")
-
-local TargetPool_Text = Folders_Section:Label("NO TARGETS FOUND") 
-
-local AutoParryToggle = AP_Section:Toggle("Auto Parry", true):AddKeybind("g", "Toggle")
-local AutoDodgeToggle = AP_Section:Toggle("Auto Dodge", true)
-
-local AutoTargetNearest = AP_Section:Toggle("Auto Target Nearest", false)
-local MuliTarget = AP_Section:Toggle("Multiple Targets", true)
-
-local TargetFacingYou = AP_Section:Toggle("Target facing you", false)
-local YouFacingTarget = AP_Section:Toggle("You facing target", true)
-
-local LoggedText = ClipboardSection:Label("Logged Ids: ?")
-local IgnoredText = ClipboardSection:Label("Ignored Ids: ?")
-
-local function UpdateTargetPoolSection(Tab)
-    local characters = GetAllCharactersInFolder() 
-    local names = {}
-    
-    for _, character in ipairs(characters) do
-        table.insert(names, character.Name)
-    end
-
-    local poolString = table.concat(names, ", ")
-    TargetPool_Text:SetText("Target Pool: ".. poolString)
-end
-
-local function UpdateClipboardSection()
-    local IgnoredIdsCount = #IgnoreIds
-    local AnimationsLoggedCount = 0 
-
-    for i, v in AnimationsLoggedCache do  
-        AnimationsLoggedCount += 1
-    end
-
-    LoggedText:SetText("Logged Ids: ".. AnimationsLoggedCount)
-    IgnoredText:SetText("Ignored Ids: ".. #IgnoreIds)
-end
-
-local function CreateFoldersSection()
-    local folders = GetAllFoldersInWorkspace()
-
-    local Range = Folders_Section:Slider("Max Cycle Range", 10, 1, 7, 50, "", function(v)
-        MaxCycleRange = v
-    end)
-    Range:Set(MaxCycleRange)
-
-
-    local IncludeLocalCharacterToggle = Folders_Section:Toggle("Include Local Character", false, function(on)
-        IncludeLocalCharacter = on
-        UpdateTargetPoolSection()   
-    end)
-
-    local FolderCombo = Folders_Section:Dropdown("Live Folder", nil, folders, false, function(list)
-        local Selected = list[1]
-        SelectedFolder = Selected
-        UpdateTargetPoolSection(Tab)
-    end)
-
-    if game.Workspace:FindFirstChild("Players") then  
-        FolderCombo:Set({"Players"})
-    elseif game.Workspace:FindFirstChild("Live") then 
-        FolderCombo:Set({"Live"})
-    end
-
-    print("[UI] Folders Section Created")
-end
-
-local StyleSliders = {}
-local function CreateStyleSliders()
-    local Number = 1
-    for animationId, Info in GameConfig do  
-        local StyleName = Info.Style
-        if Info.DisplayName == "M2" or not StyleName or not Info.M1Time then continue end 
-
-        if not StyleSliders[StyleName] then
-            local Section = (Number % 2 == 1) and ConfigSection_Left or ConfigSection_Right
+            if decoded.maxWalkSpeedLimit ~= nil then maxWalkSpeedLimit = tonumber(decoded.maxWalkSpeedLimit) or maxWalkSpeedLimit end
+            if decoded.minWalkSpeedLimit ~= nil then minWalkSpeedLimit = tonumber(decoded.minWalkSpeedLimit) or minWalkSpeedLimit end
+            if decoded.maxAnimSpeedLimit ~= nil then maxAnimSpeedLimit = tonumber(decoded.maxAnimSpeedLimit) or maxAnimSpeedLimit end
+            if decoded.minAnimSpeedLimit ~= nil then minAnimSpeedLimit = tonumber(decoded.minAnimSpeedLimit) or minAnimSpeedLimit end
             
-            StyleSliders[StyleName] = {
-                Animations = { Info }
+            if decoded.uiConfig then
+                customUiConfig.height = decoded.uiConfig.height or 360
+                customUiConfig.textSize = decoded.uiConfig.textSize or 14
+                
+                local bgR = decoded.uiConfig.bgR or 16
+                local bgG = decoded.uiConfig.bgG or 16
+                local bgB = decoded.uiConfig.bgB or 19
+                customUiConfig.bgColor = Color3.fromRGB(bgR, bgG, bgB)
+
+                local textR = decoded.uiConfig.textR or 240
+                local textG = decoded.uiConfig.textG or 240
+                local textB = decoded.uiConfig.textB or 245
+                customUiConfig.textColor = Color3.fromRGB(textR, textG, textB)
+                
+                local textBgR = decoded.uiConfig.textBgR or 24
+                local textBgG = decoded.uiConfig.textBgG or 24
+                local textBgB = decoded.uiConfig.textBgB or 28
+                customUiConfig.textBgColor = Color3.fromRGB(textBgR, textBgG, textBgB)
+
+                local sliderR = decoded.uiConfig.sliderR or 120
+                local sliderG = decoded.uiConfig.sliderG or 180
+                local sliderB = decoded.uiConfig.sliderB or 255
+                customUiConfig.sliderColor = Color3.fromRGB(sliderR, sliderG, sliderB)
+                
+                customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.03
+            end
+        end
+    end)
+    normaliseLimits()
+end
+
+local function saveSavesToFile()
+    pcall(function()
+        if writefile then
+            saveData.maxWalkSpeedLimit = maxWalkSpeedLimit
+            saveData.minWalkSpeedLimit = minWalkSpeedLimit
+            saveData.maxAnimSpeedLimit = maxAnimSpeedLimit
+            saveData.minAnimSpeedLimit = minAnimSpeedLimit
+            saveData.uiConfig = {
+                height = customUiConfig.height,
+                textSize = customUiConfig.textSize,
+                bgR = math.floor(customUiConfig.bgColor.R * 255 + 0.5),
+                bgG = math.floor(customUiConfig.bgColor.G * 255 + 0.5),
+                bgB = math.floor(customUiConfig.bgColor.B * 255 + 0.5),
+                textR = math.floor(customUiConfig.textColor.R * 255 + 0.5),
+                textG = math.floor(customUiConfig.textColor.G * 255 + 0.5),
+                textB = math.floor(customUiConfig.textColor.B * 255 + 0.5),
+                textBgR = math.floor(customUiConfig.textBgColor.R * 255 + 0.5),
+                textBgG = math.floor(customUiConfig.textBgColor.G * 255 + 0.5),
+                textBgB = math.floor(customUiConfig.textBgColor.B * 255 + 0.5),
+                sliderR = math.floor(customUiConfig.sliderColor.R * 255 + 0.5),
+                sliderG = math.floor(customUiConfig.sliderColor.G * 255 + 0.5),
+                sliderB = math.floor(customUiConfig.sliderColor.B * 255 + 0.5),
+                bgTransparency = customUiConfig.bgTransparency
             }
-            
-            Section:Slider("Parry Time For " .. tostring(StyleName), Info.M1Time, 0.01, 0, 1, "", function(v)
-                for _, animInfo in ipairs(StyleSliders[StyleName].Animations) do
-                    animInfo.ParryTime = v
-                end
-            end)
-
-            Number += 1
-        else
-            table.insert(StyleSliders[StyleName].Animations, Info)
+            writefile(SAVE_FILE_NAME, HttpService:JSONEncode(saveData))
         end
-    end
-end
-
-local function CreateAPSection()
-    local Range = AP_Section:Slider("Auto Parry Range", 40, 1, 7, 80, "", function(v)
-        AutoParryRange = v
-    end)
-    Range:Set(AutoParryRange)
-    
-    local Time = AP_Section:Slider("Default Parry Time", 0.3, 0.01, 0, 1, "", function(v)
-        DefaultParryTime = v
-    end)
-    Time:Set(DefaultParryTime)
-
-    local Window = AP_Section:Slider("Default Parry Window", 0.3, 0.01, 0, 1, "", function(v)
-        ParryWindow = v
-    end)
-    Window:Set(ParryWindow)
-
-    local Release = AP_Section:Slider("Default Release Time", 0.3, 0.01, 0, 1, "", function(v)
-        ReleaseTime = v
-    end)
-    Release:Set(ReleaseTime)
-end
-
-local function CreateClipboardSection()
-    local DamageLogToggle = ClipboardSection:Toggle("Damage Logs", false, function(on)
-        ToggleDamageLogger(on)
-    end)
-
-    local CopyButton = ClipboardSection:Button("Copy to clipboard", function()
-        SetClipboardLoggedCache()
-    end)
-
-    local ClearCache = ClipboardSection:Button("Clear animation cache", function()
-        AnimationsLoggedCache = {}
-        AnimationsLoggedOrder = {}
-        UpdateClipboardSection()
     end)
 end
 
-CreateFoldersSection()
-CreateStyleSliders()
-CreateAPSection()
+loadSavesFromFile()
 
-UpdateClipboardSection()
-CreateClipboardSection()
+local function initializeUI()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "AnimOverride"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.Parent = plr:WaitForChild("PlayerGui")
 
--- ==========================================
-local PARRY_DISTANCE = 15 
-local PARRY_COOLDOWN = 0.1
-
-local activeOrbs = {}
-local lastParryAt = 0
-
-local function GetLocalHRP()
-    local localChar = LocalPlayer.Character
-    local HRP = localChar:FindFirstChild("HumanoidRootPart")
-    if not HRP then return nil end 
-    return HRP
-end
-
-local function checkRange(Studs, Origin : Part)
-    local HRP = GetLocalHRP()
-
-    if (HRP.Position - Origin.Position).Magnitude < Studs then  
-        return true 
-    else
-        return false 
-    end
-end
-
-local function ListenForOrbs()
-    print("Listening for orbs ")
-	local connection
-    local hrp = LocalPlayer.Character.HumanoidRootPart
-	connection = RunService.RenderStepped:Connect(function()
-		if not hrp or not hrp.Parent then return end
-		local myPosition = hrp.Position
-
-        local ActiveOrbs = {}
-        for i, v in game.Workspace.Thrown:GetChildren() do  
-            if v.Name == "ArdourBall2" or v.Name == "ArdourBall" then  
-                table.insert(ActiveOrbs, v)
-            end
-        end
-
-		for i = #ActiveOrbs, 1, -1 do
-			local orb = ActiveOrbs[i]
-
-			if orb and orb.Parent then
-				local distance = (myPosition - orb.Position).Magnitude
-
-				if distance <= PARRY_DISTANCE and (tick() - lastParryAt >= 0.1) then
-					lastParryAt = tick()
-					
-					BlockStart()
-                    BlockEnd()
-
-					table.remove(ActiveOrbs, i)					
-					break 
-				end
-			else
-				table.remove(ActiveOrbs, i)
-			end
-		end
-	end)
-	
-	return connection
-end
-
--- Start listening
-if game.PlaceId == 8668476218 or game.PlaceId == 134572803901609 then  
-    local orbListener = ListenForOrbs()    
-end
-
--- ==========================================
--- Configs 
--- ==========================================
-
-local ParryKey = string.byte("F")
-local DodgeKey = string.byte("Q")
-
-local LastParryTime = 0
-local KeyHeld = false
-local TriggerParry = false
-local CooldownActive = false 
-
-local Stunned = false
-local currentStunToken = 0
-
-local parryIntentSnapshot = nil
-local ParrySuccess = false
-
-local AnimationTracker = AnimationTracker.new(IgnoreIds)
-local LocalTracker = AnimationTracker.new(IgnoreIds)
-
-local DamageLogs = false
-local IncludeLocalCharacter = false
-
-local lastAnimationCheck = 0
-local connection = nil
-local previousHealth = 100
-local lastCharacter = nil
-
-local SelectAllMode = true 
-local TargetCharacters = {}
-local EspTrackers = {} 
-
-local PendingParryTimestamp = nil 
-local EspTracker = nil
-local CurrentIndex = 1
-local COLOR_WHITE = Color3.fromRGB(255, 255, 255)
-local COLOR_RED = Color3.fromRGB(255, 50, 50)
-local COLOR_GREEN = Color3.fromRGB(50, 255, 50)
-
--- ==========================================
--- Helpers
--- ==========================================
-
-local function ToggleDamageLogger(state)
-    if not state then
-        if connection then
-        connection:Disconnect()
-        connection = nil end
-        print("[Logger] Heartbeat damage logger DISABLED.")
-        return
-    end
-
-    if connection then return end -- Prevent duplicate connections
-    print("[Logger] Heartbeat damage logger ACTIVE.")
-    
-    connection = RunService.Heartbeat:Connect(function()
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChild("Humanoid")
-        if not hum then return end 
-
-        if lastCharacter and (char.Address ~= lastCharacter.Address) then
-            lastCharacter = char
-            previousHealth = hum.Health
-        end
-        local currentHealth = hum.Health
-        if currentHealth < previousHealth then
-            local damageTaken = previousHealth - currentHealth
-            
-            if #TargetCharacters then
-                local activeAnimations = AnimationTracker:Update(TargetCharacter) or {}
-                
-                
-                for _, anim in activeAnimations do
-                    if not anim.AnimationId or anim.TimePosition < 0.1 or anim.TimePosition > 0.7 then continue end 
-                    local assetId = tostring(anim.AnimationId)
-                    local poolData = GameConfig[assetId]
-                    warn(string.format(
-                        "[HIT] %d DMG | Anim: %s (%s) %s | Frame Time: %.3f", 
-                        damageTaken, 
-                        poolData and poolData.DisplayName or anim.Name or "Unknown",
-                        assetId, 
-                        poolData and poolData.Style or "",
-                        anim.TimePosition or 0
-                    ))
-                end
-            end
-        end
-        previousHealth = currentHealth
-    end)
-end
-
--- ==========================================
--- Parry Core Logic
--- ==========================================
-
-
-local function GetHeightMultiplierForCharacter(TargetCharacter)
-    local stateFolder = TargetCharacter and TargetCharacter:FindFirstChild("PlayerData")
-    if stateFolder then
-        return stateFolder:GetAttribute("CurrentHeight")
-    end
-    return 1
-end
-
-function Dodge()
-    keyrelease(DodgeKey)
-    keyrelease(ParryKey)
-
-    keypress(DodgeKey)
-    keyrelease(DodgeKey)
-    mouse2click()
-end
-
-function BlockStart(now, duration)
-    local now = now or os.clock()
-    
-    local holdTime = duration or ReleaseTime 
-
-    ReleaseDeadline = now + holdTime    
-    
-    KeyHeld = true
-    CooldownActive = true
-    LastParryTime = now 
-    
-    if AutoParryToggle.Get() == true then
-        if ismouse1pressed() then mouse2click() end
-        keypress(ParryKey)
-    end
-end
-
-function BlockEnd()
-    KeyHeld = false
-    ReleaseDeadline = 0
-    ParrySuccess = false 
-    
-    if AutoParryToggle.Get() == true then 
-        keyrelease(ParryKey) 
-    end 
-end
-
-
-local function ParryTask()
-    local now = os.clock()
-
-    if KeyHeld then
-        -- I am currently holding the block button. Has my timer run out? Is it time to let go?
-        local isExpired = (now >= ReleaseDeadline)
-     --   local isSafetyTimeout = (now - LastParryTime >= ReleaseTime)
-        
-        if isExpired or ParrySuccess then
-            if ParrySuccess then
-                ParrySuccess = false
-            end
-            BlockEnd()
-        end
-    end
-
-   if PendingParryTimestamp then
-        local latency = now - PendingParryTimestamp
-
-        -- I am in the queue waiting to block. However, I've been stuck waiting for so long (latency) that the enemy's attack has already finished. I should throw this parry request in the trash.
-        local isExpired = latency > ParryWindow
-        
-        if isExpired then
-          --  warn(string.format("[Debug] Parry intent expired after %.3fs", latency))
-            PendingParryTimestamp = nil
-        elseif not CooldownActive then
-         --   print(string.format("[Debug] Executing parry! Latency: %.3fs", latency))
-            BlockStart(now)
-            PendingParryTimestamp = nil
-        else
-            -- Optional: print why it's waiting
-            -- print("[Debug] Parry queued but state is busy (Cooldown/Hold)")
-        end
-    end
-end
-
-local function onLocalAnimationAdded(anim)
-    local animId = anim.AnimationId
-
-    if table.find(ParriedAnimation, animId) then  
-        if parryIntentSnapshot then
-            local timeStr = string.format("%.3f", parryIntentSnapshot.TriggerTime)
-            UI_Library:Notify(
-                "Parry status", 
-                "success! Evaluated at " .. timeStr .. " for " .. parryIntentSnapshot.Style .. " " .. parryIntentSnapshot.DisplayName
-            )
-            parryIntentSnapshot = nil 
-        else
-            UI_Library:Notify("Parry status", "success")
-        end
-        ParrySuccess = true
-        CooldownActive = false
-    end
-
-    if table.find(StunnedAnimation, animId) then  
-        Stunned = true
-        
-        currentStunToken = currentStunToken + 1
-        local myToken = currentStunToken
-        
-        -- Works exactly like task.delay!
-        scheduler.delay(0.2, function()
-            if currentStunToken == myToken then
-                Stunned = false
-            end
+    local function showNotification(message)
+        pcall(function()
+            StarterGui:SetCore("SendNotification", {
+                Title = "AnimOverride",
+                Text = message,
+                Duration = 2.5
+            })
         end)
     end
-end
 
+    local introOverlay = Instance.new("Frame", gui)
+    introOverlay.Size = UDim2.fromScale(1, 1)
+    introOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    introOverlay.BackgroundTransparency = 0.5
+    introOverlay.BorderSizePixel = 0
+    introOverlay.ZIndex = 100
 
-local AnimationAdded = LocalTracker.AnimationAdded:Connect(onLocalAnimationAdded)
+    local introContainer = Instance.new("Frame", introOverlay)
+    introContainer.Size = UDim2.fromOffset(350, 120)
+    introContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+    introContainer.Position = UDim2.fromScale(0.5, 0.5)
+    introContainer.BackgroundTransparency = 1
+    introContainer.ZIndex = 101
 
--- ==========================================
--- Evaluation & Target Handling
--- ==========================================
+    local introTitle = Instance.new("TextLabel", introContainer)
+    introTitle.Size = UDim2.new(1, 0, 0, 60)
+    introTitle.Position = UDim2.fromScale(0, 0)
+    introTitle.BackgroundTransparency = 1
+    introTitle.TextColor3 = Color3.fromRGB(240, 240, 245)
+    introTitle.Font = Enum.Font.GothamBold
+    introTitle.TextSize = 40
+    introTitle.Text = "AnimOverride"
+    introTitle.ZIndex = 101
 
-local function LogAnimation(assetId, trackInfo)
-    if not AnimationsLoggedCache[assetId] then
-        AnimationsLoggedCache[assetId] = { Name = trackInfo.Name }
-        table.insert(AnimationsLoggedOrder, assetId)
-        UpdateClipboardSection()
-    end
-end
+    local introSubtitle = Instance.new("TextLabel", introContainer)
+    introSubtitle.Size = UDim2.new(1, 0, 0, 30)
+    introSubtitle.Position = UDim2.fromOffset(0, 65)
+    introSubtitle.BackgroundTransparency = 1
+    introSubtitle.TextColor3 = Color3.fromRGB(140, 140, 155)
+    introSubtitle.Font = Enum.Font.GothamSemibold
+    introSubtitle.TextSize = 18
+    introSubtitle.Text = "by Suta Burger"
+    introSubtitle.ZIndex = 101
 
-local AnimationRegistry = {}
+    local mainFrame = Instance.new("Frame", gui)
+    mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
+    mainFrame.Position = UDim2.new(0, 20, 1, 50)
+    mainFrame.BackgroundColor3 = customUiConfig.bgColor
+    mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    mainFrame.BorderSizePixel = 0
 
-local function EvaluateParryTriggers()
-    local localCharacter = LocalPlayer and LocalPlayer.Character
-    local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-    if not localRoot or Stunned then return end
-
-    local currentActiveIds = {}
-    
-    local pingDelay = (GetPingValue() / 1000) / 2 
-
-    for _, character in ipairs(TargetCharacters) do
-            local targetRoot = character:FindFirstChild("HumanoidRootPart")
-            if not targetRoot then continue end
-    
-            local Distance = (targetRoot.Position - localRoot.Position).Magnitude
-            if Distance < AutoParryRange then 
-                if EspTrackers[character] and EspTrackers[character].ChangeText then  
-                    EspTrackers[character]:ChangeText("Name", "IN RANGE", COLOR_GREEN)  
-                end
-            else
-                if EspTrackers[character] and EspTrackers[character].ChangeText then  
-                    EspTrackers[character]:ChangeText("Name", "OUT OF RANGE", COLOR_RED)  
-                end
-
-                continue 
-            end
-    
-            local activeAnimations = AnimationTracker:Update(character)
-            if not activeAnimations or #activeAnimations == 0 then continue end
-            local now = os.clock() 
-
-            for index, anim in ipairs(activeAnimations) do
-                if not anim.AnimationId then continue end
-            
-                local animKey = anim.Address or anim 
-                currentActiveIds[animKey] = true
-                local currentTrackTime = anim.TimePosition or 0
-            
-                -- 1. Initialize Registry Data if it's a brand new animation
-                if not AnimationRegistry[animKey] then
-                    AnimationRegistry[animKey] = {
-                        StartTime = now - currentTrackTime,
-                        Processed = false,
-                        Snapshot = false,
-                        LastTime = currentTrackTime
-                    }
-                end
-                
-                local regData = AnimationRegistry[animKey]
-            
-                -- 2. Check for loops BEFORE doing time calculations
-                if regData.LastTime and (currentTrackTime < regData.LastTime - 0.1) then
-                    regData.Processed = false
-                    regData.Snapshot = false
-                    regData.StartTime = now - currentTrackTime
-                    print('animation looped')
-                end
-                regData.LastTime = currentTrackTime
-            
-                -- 3. Config Check
-                local attackConfig = GameConfig[tostring(anim.AnimationId)]
-                if not attackConfig then continue end 
-            
-                -- 4. Time Math
-                local startTime = regData.StartTime
-                local currentTime = now - startTime
-                local baseTime = attackConfig.ParryTime or DefaultParryTime
-                local parryStart = baseTime - pingDelay
-                local parryEnd = baseTime + ParryWindow
-                local isHeavy = attackConfig.DisplayName == "M2" or (attackConfig.DisplayName == "Heavy" and AutoDodgeToggle.Get())
-            
-                -- 5. Processed Checks
-                if regData.Processed then continue end 
-            
-                if attackConfig.ParryFunction then
-                    regData.Processed = true
-                    task.spawn(function()
-                        attackConfig.ParryFunction(character)                        
-                    end)
-                    continue
-                end
-            
-                -- 6. Direction Checks
-                if character.Address ~= localCharacter.Address then
-                    local direction = (targetRoot.Position - localRoot.Position).Unit 
-                    if not isHeavy then  
-                       if TargetFacingYou.Get() and targetRoot.CFrame.LookVector:Dot(-direction) < 0.25 then continue end
-                       if YouFacingTarget.Get() and localRoot.CFrame.LookVector:Dot(direction) < 0.25 then continue end
-                    end
-                end
-                
-                -- 7. Execute Actions
-                if currentTime >= parryStart and currentTime <= parryEnd then
-                    -- Optional: regData.Processed = true -- Prevent spamming if you only want 1 block per window
-            
-                    if not regData.Snapshot then  
-                        regData.Snapshot = true 
-                        parryIntentSnapshot = {
-                            TriggerTime = currentTime,
-                            Style = attackConfig.Style or "Unknown",
-                            DisplayName = attackConfig.DisplayName or "Attack"
-                        }
-                    end
-            
-                    if isHeavy then  
-                        Dodge()
-                    else 
-                        BlockStart()
-                        PendingParryTimestamp = now
-                    end
-                end
-            end
-            
-    end
-
-    for key in pairs(AnimationRegistry) do
-        if not currentActiveIds[key] then
-            AnimationRegistry[key] = nil
-        end
-    end
-end
-
-local function ProcessEspAndLogging()
-    for i = #TargetCharacters, 1, -1 do
-        local character = TargetCharacters[i]
-        local tracker = EspTrackers[character]
+    task.delay(3, function()
+        local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+        TweenService:Create(introOverlay, tweenInfo, {BackgroundTransparency = 1}):Play()
+        TweenService:Create(introTitle, tweenInfo, {TextTransparency = 1}):Play()
+        TweenService:Create(introSubtitle, tweenInfo, {TextTransparency = 1}):Play()
         
-        if tracker and not tracker.ChangeText then 
-            EspTrackers[character] = nil 
-            table.remove(TargetCharacters, i) -- Safely removes and shifts elements
-            print("removed ok")
-            continue
-        end
+        TweenService:Create(mainFrame, TweenInfo.new(0.9, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, 0.1), {
+            Position = UDim2.new(0, 20, 0.5, -customUiConfig.height / 2)
+        }):Play()
 
-        -- Fetch active animations using your AnimationTracker system
-        local activeAnimations = AnimationTracker:Update(character) or {}
-        local lines = {}
-        
-        if #activeAnimations == 0 then 
-            tracker:ChangeText("CurrentlyPlaying", "None", COLOR_WHITE) 
-            continue 
-        end 
-
-        for i = 1, #activeAnimations do
-            local anim = activeAnimations[i]
-            if not anim.AnimationId then continue end        
-            
-            local assetId = anim.AnimationId
-            local numericId = tonumber(string.match(tostring(assetId), "%d+"))
-            
-            if numericId and table.find(IgnoreIds, numericId) then continue end 
-            
-            local poolData = GameConfig[tostring(assetId)]
-            local resolvedName = poolData and poolData.DisplayName or anim.Name
-            
-            if not poolData then  
-                LogAnimation(assetId, { Name = resolvedName, AnimationId = assetId })
-            end
-
-            table.insert(lines, string.format(
-                "%s (%s) | ID: %s | Time: %.2f | Timing: %.2f %s | Speed: %.2f",
-                tostring(resolvedName),
-                poolData and poolData.Style or "???",
-                tostring(assetId),
-                anim.TimePosition or 0.00,
-                poolData and poolData.ParryTime or DefaultParryTime,
-                poolData and "[Logged]" or "[Unknown]",
-                anim.Speed
-            ))
-        end
-
-        if tracker and tracker.Name then  
-            tracker:ChangeText("CurrentlyPlaying", table.concat(lines, "\n"), COLOR_WHITE) 
-        end    
-    end
-end
-
-local function ClearAllEspTrackers()
-    for char, tracker in pairs(EspTrackers) do
-        if tracker and tracker.Destroy then            
-            if ESP_Utility.TrackersToUpdate[tracker] then
-                ESP_Utility.TrackersToUpdate[tracker] = nil
-            end
-
-            -- 2. Destroy the tracker object
-            tracker:Destroy()
-        end
-    end
-    table.clear(EspTrackers) -- Safer than re-assigning {} to preserve table memory references
-end
-
-local function UpdateTargetCharacters(charactersList)
-    -- Clean up old trackers and clear previous target list
-    ClearAllEspTrackers()
-    table.clear(TargetCharacters)
-
-    -- Populate new targets
-    for _, character in charactersList do
-        table.insert(TargetCharacters, character)
-        
-        -- Apply ESP if a HumanoidRootPart exists
-        if character and character:FindFirstChild("HumanoidRootPart") then
-            local tracker = ESP_Utility.NewTracker(character.HumanoidRootPart, character.Name, COLOR_RED)
-            if tracker and tracker.Name then
-                tracker:AddText("CurrentlyPlaying", nil, "???")
-            end
-            EspTrackers[character] = tracker
-        end
-    end
-end
-
-local function CycleEvent()
-    local allCharacters = GetAllCharactersInFolder()
-    if not SelectedFolder or not allCharacters then 
-        UpdateTargetCharacters({})
-        return 
-    end
-
-    local localPlayer = game.Players.LocalPlayer
-    local localCharacter = localPlayer.Character
-    local localRoot = localCharacter and localCharacter:FindFirstChild("HumanoidRootPart")
-    if not localRoot then return end
-
-    local validCharacters = {}
-
-    for _, char in ipairs(allCharacters) do
-        -- Prevent the script from targeting yourself
-        if char == localCharacter then continue end 
-
-        local targetRoot = char:FindFirstChild("HumanoidRootPart")
-        if targetRoot then
-            local distance = (localRoot.Position - targetRoot.Position).Magnitude
-            if distance <= MaxCycleRange then
-                table.insert(validCharacters, { Character = char, Distance = distance })
-            end
-        end
-    end
-    
-    if #validCharacters == 0 then
-        CurrentIndex = 1
-        UpdateTargetCharacters({}) 
-        if not AutoTargetNearest.Get() then  
-            UI_Library:Notify("Cycle", "No targets found in range [".. MaxCycleRange.." studs]")            
-        end
-        return
-    end
-
-    table.sort(validCharacters, function(a, b)
-        return a.Distance < b.Distance
+        task.wait(1.5)
+        introOverlay:Destroy()
     end)
 
-    if MuliTarget.Get() then
-        local Max = 3
-        local finalTargets = {}
+    local killModalOverlay = Instance.new("Frame", gui)
+    killModalOverlay.Size = UDim2.fromScale(1, 1)
+    killModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    killModalOverlay.BackgroundTransparency = 1
+    killModalOverlay.Visible = false
+    killModalOverlay.ZIndex = 300
+
+    local killModalFrame = Instance.new("Frame", killModalOverlay)
+    killModalFrame.Size = UDim2.fromOffset(340, 170)
+    killModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    killModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+    killModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    killModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    killModalFrame.BorderSizePixel = 0
+    killModalFrame.ZIndex = 301
+
+    local function addProfessionalStroke(parent, color, thickness)
+        local stroke = Instance.new("UIStroke", parent)
+        stroke.Color = color or Color3.fromRGB(80, 80, 100)
+        stroke.Transparency = 0.6
+        stroke.Thickness = thickness or 1.2
+        return stroke
+    end
+
+    local killCorner = Instance.new("UICorner", killModalFrame)
+    killCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(killModalFrame)
+
+    local killTitle = Instance.new("TextLabel", killModalFrame)
+    killTitle.Size = UDim2.fromOffset(300, 24)
+    killTitle.Position = UDim2.fromOffset(20, 15)
+    killTitle.BackgroundTransparency = 1
+    killTitle.TextColor3 = customUiConfig.textColor
+    killTitle.Font = Enum.Font.GothamBold
+    killTitle.TextSize = 16
+    killTitle.Text = "THIS KILLS THE SCRIPT.."
+    killTitle.ZIndex = 302
+
+    local killMsg = Instance.new("TextLabel", killModalFrame)
+    killMsg.Size = UDim2.fromOffset(300, 55)
+    killMsg.Position = UDim2.fromOffset(20, 48)
+    killMsg.BackgroundTransparency = 1
+    killMsg.TextColor3 = Color3.fromRGB(200, 200, 215)
+    killMsg.Font = Enum.Font.Gotham
+    killMsg.TextSize = 14
+    killMsg.TextXAlignment = Enum.TextXAlignment.Center
+    killMsg.TextYAlignment = Enum.TextYAlignment.Top
+    killMsg.TextWrapped = true
+    killMsg.Text = "You will need to execute it again\nare you sure?"
+    killMsg.ZIndex = 302
+
+    local function playClickSound()
+        pcall(function()
+            local s = Instance.new("Sound")
+            s.SoundId = "rbxassetid://119354387183704"
+            s.Volume = 1
+            s.Parent = SoundService
+            s:Play()
+            s.Ended:Connect(function() s:Destroy() end)
+        end)
+    end
+
+    local function addHoverAnimation(btnObj)
+        btnObj.AutoButtonColor = false
+        local uiScale = Instance.new("UIScale", btnObj)
+        uiScale.Scale = 1
+
+        btnObj.MouseEnter:Connect(function()
+            pcall(function()
+                local s = Instance.new("Sound")
+                s.SoundId = "rbxassetid://136108770017536"
+                s.Volume = 1
+                s.Parent = SoundService
+                s:Play()
+                s.Ended:Connect(function() s:Destroy() end)
+            end)
+
+            TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Scale = 1.06
+            }):Play()
+        end)
+
+        btnObj.MouseLeave:Connect(function()
+            TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+                Scale = 1.0
+            }):Play()
+        end)
+
+        if btnObj:IsA("TextButton") then
+            btnObj.MouseButton1Click:Connect(playClickSound)
+        end
+    end
+
+    local killConfirmBtn = Instance.new("TextButton", killModalFrame)
+    killConfirmBtn.Size = UDim2.fromOffset(135, 32)
+    killConfirmBtn.Position = UDim2.fromOffset(20, 115)
+    killConfirmBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
+    killConfirmBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
+    killConfirmBtn.Font = Enum.Font.GothamSemibold
+    killConfirmBtn.TextSize = 13
+    killConfirmBtn.Text = "Yes, Close"
+    killConfirmBtn.ZIndex = 302
+    local kcbCorner = Instance.new("UICorner", killConfirmBtn)
+    kcbCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(killConfirmBtn)
+    addHoverAnimation(killConfirmBtn)
+
+    local killCancelBtn = Instance.new("TextButton", killModalFrame)
+    killCancelBtn.Size = UDim2.fromOffset(135, 32)
+    killCancelBtn.Position = UDim2.fromOffset(165, 115)
+    killCancelBtn.BackgroundColor3 = customUiConfig.textBgColor
+    killCancelBtn.TextColor3 = customUiConfig.textColor
+    killCancelBtn.Font = Enum.Font.GothamSemibold
+    killCancelBtn.TextSize = 13
+    killCancelBtn.Text = "Cancel"
+    killCancelBtn.ZIndex = 302
+    local kcnCorner = Instance.new("UICorner", killCancelBtn)
+    kcnCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(killCancelBtn)
+    addHoverAnimation(killCancelBtn)
+
+    local killTriggerBtn = Instance.new("TextButton", gui)
+    killTriggerBtn.Size = UDim2.fromOffset(36, 36)
+    killTriggerBtn.Position = UDim2.fromOffset(17, 58)
+    killTriggerBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+    killTriggerBtn.TextColor3 = Color3.fromRGB(245, 65, 65)
+    killTriggerBtn.Font = Enum.Font.GothamBold
+    killTriggerBtn.TextSize = 16
+    killTriggerBtn.Text = "X"
+    killTriggerBtn.ZIndex = 250
+    local ktbCorner = Instance.new("UICorner", killTriggerBtn)
+    ktbCorner.CornerRadius = UDim.new(1, 0)
+    addProfessionalStroke(killTriggerBtn)
+    addHoverAnimation(killTriggerBtn)
+
+    killTriggerBtn.MouseButton1Click:Connect(function()
+        if killModalOverlay.Visible then return end
+        killModalOverlay.Visible = true
+        killModalFrame.Size = UDim2.fromOffset(0, 0)
+        killModalFrame.Rotation = -10
+
+        TweenService:Create(killModalOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.6
+        }):Play()
+
+        local popTween = TweenService:Create(killModalFrame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Size = UDim2.fromOffset(340, 170),
+            Rotation = 0
+        })
+        popTween:Play()
+        popTween.Completed:Wait()
+
+        local originalPos = killModalFrame.Position
+        local shakeTime = 0.04
+        for i = 1, 3 do
+            TweenService:Create(killModalFrame, TweenInfo.new(shakeTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+                Position = originalPos + UDim2.fromOffset(-8, 0)
+            }):Play()
+            task.wait(shakeTime)
+            TweenService:Create(killModalFrame, TweenInfo.new(shakeTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+                Position = originalPos + UDim2.fromOffset(12, 0)
+            }):Play()
+            task.wait(shakeTime)
+            TweenService:Create(killModalFrame, TweenInfo.new(shakeTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+                Position = originalPos + UDim2.fromOffset(-6, 0)
+            }):Play()
+            task.wait(shakeTime)
+            TweenService:Create(killModalFrame, TweenInfo.new(shakeTime, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {
+                Position = originalPos,
+            }):Play()
+            task.wait(shakeTime)
+        end
+    end)
+
+    killCancelBtn.MouseButton1Click:Connect(function()
+        TweenService:Create(killModalOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1
+        }):Play()
+        local t = TweenService:Create(killModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Size = UDim2.fromOffset(0, 0),
+            Rotation = 8
+        })
+        t:Play()
+        t.Completed:Connect(function()
+            killModalOverlay.Visible = false
+            killModalFrame.Rotation = 0
+        end)
+    end)
+
+    killConfirmBtn.MouseButton1Click:Connect(function()
+        pcall(function()
+            if walkSpeedConn then walkSpeedConn:Disconnect() end
+            if track then track:Stop() end
+            if poseTrack then poseTrack:Stop() end
+        end)
+        gui:Destroy()
+    end)
+
+    local savesFrame = Instance.new("Frame", gui)
+    savesFrame.Size = UDim2.fromOffset(510, 385)
+    savesFrame.Position = UDim2.new(1, -20, 0.5, -90)
+    savesFrame.BackgroundColor3 = customUiConfig.bgColor
+    savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    savesFrame.BorderSizePixel = 0
+    savesFrame.Visible = false
+    savesFrame.AnchorPoint = Vector2.new(1, 0.5)
+
+    local optionsModalFrame = Instance.new("Frame", mainFrame)
+    optionsModalFrame.Size = UDim2.fromOffset(380, 250)
+    optionsModalFrame.Position = UDim2.new(1, 10, 0, 0)
+    optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    optionsModalFrame.BorderSizePixel = 0
+    optionsModalFrame.Visible = false
+    optionsModalFrame.ZIndex = 51
+
+    local hoverColorPanel = Instance.new("Frame", optionsModalFrame)
+    hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+    hoverColorPanel.Position = UDim2.new(0, 0, 1, 0)
+    hoverColorPanel.BackgroundColor3 = customUiConfig.bgColor
+    hoverColorPanel.BackgroundTransparency = customUiConfig.bgTransparency
+    hoverColorPanel.BorderSizePixel = 0
+    hoverColorPanel.ClipsDescendants = true
+    hoverColorPanel.Visible = false
+    hoverColorPanel.ZIndex = 55
+
+    local hoverUiSlotsPanel = Instance.new("Frame", optionsModalFrame)
+    hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+    hoverUiSlotsPanel.Position = UDim2.new(0, 0, 1, 0)
+    hoverUiSlotsPanel.BackgroundColor3 = customUiConfig.bgColor
+    hoverUiSlotsPanel.BackgroundTransparency = customUiConfig.bgTransparency
+    hoverUiSlotsPanel.BorderSizePixel = 0
+    hoverUiSlotsPanel.ClipsDescendants = true
+    hoverUiSlotsPanel.Visible = false
+    hoverUiSlotsPanel.ZIndex = 55
+
+    local hoverSpeedPanel = Instance.new("Frame", mainFrame)
+    hoverSpeedPanel.Size = UDim2.fromOffset(230, 0)
+    hoverSpeedPanel.AnchorPoint = Vector2.new(0, 1)
+    hoverSpeedPanel.Position = UDim2.new(0, 10, 0, 0)
+    hoverSpeedPanel.BackgroundColor3 = customUiConfig.bgColor
+    hoverSpeedPanel.BackgroundTransparency = customUiConfig.bgTransparency
+    hoverSpeedPanel.BorderSizePixel = 0
+    hoverSpeedPanel.ClipsDescendants = true
+    hoverSpeedPanel.Visible = false
+    hoverSpeedPanel.ZIndex = 30
+
+    local popupOverlay = Instance.new("Frame", gui)
+    popupOverlay.Size = UDim2.fromScale(1, 1)
+    popupOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    popupOverlay.BackgroundTransparency = 1
+    popupOverlay.Visible = false
+    popupOverlay.ZIndex = 10
+
+    local modalFrame = Instance.new("Frame", popupOverlay)
+    modalFrame.Size = UDim2.fromOffset(300, 330)
+    modalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    modalFrame.Position = UDim2.fromScale(0.5, 0.5)
+    modalFrame.BackgroundColor3 = customUiConfig.bgColor
+    modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    modalFrame.BorderSizePixel = 0
+    modalFrame.ZIndex = 11
+
+    local fullPopupOverlay = Instance.new("Frame", gui)
+    fullPopupOverlay.Size = UDim2.fromScale(1, 1)
+    fullPopupOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    fullPopupOverlay.BackgroundTransparency = 1
+    fullPopupOverlay.Visible = false
+    fullPopupOverlay.ZIndex = 15
+
+    local fullModalFrame = Instance.new("ScrollingFrame", fullPopupOverlay)
+    fullModalFrame.Size = UDim2.fromOffset(340, 440)
+    fullModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    fullModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+    fullModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    fullModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    fullModalFrame.BorderSizePixel = 0
+    fullModalFrame.CanvasSize = UDim2.new(0, 0, 0, 430)
+    fullModalFrame.ZIndex = 16
+
+    local deleteModalOverlay = Instance.new("Frame", gui)
+    deleteModalOverlay.Size = UDim2.fromScale(1, 1)
+    deleteModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    deleteModalOverlay.BackgroundTransparency = 1
+    deleteModalOverlay.Visible = false
+    deleteModalOverlay.ZIndex = 40
+
+    local deleteModalFrame = Instance.new("Frame", deleteModalOverlay)
+    deleteModalFrame.Size = UDim2.fromOffset(280, 160)
+    deleteModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    deleteModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+    deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    deleteModalFrame.BorderSizePixel = 0
+    deleteModalFrame.ZIndex = 41
+
+    local limitModalOverlay = Instance.new("Frame", gui)
+    limitModalOverlay.Size = UDim2.fromScale(1, 1)
+    limitModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    limitModalOverlay.BackgroundTransparency = 1
+    limitModalOverlay.Visible = false
+    limitModalOverlay.ZIndex = 70
+
+    local limitModalFrame = Instance.new("Frame", limitModalOverlay)
+    limitModalFrame.Size = UDim2.fromOffset(300, 220)
+    limitModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    limitModalFrame.Position = UDim2.fromScale(0.5, 0.5)
+    limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
+    limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+    limitModalFrame.BorderSizePixel = 0
+    limitModalFrame.ZIndex = 71
+
+    local isGuiVisible = true
+    local lastOpenState = {
+        wasOptionsOpen = false,
+        wasSavesOpen = false,
+        wasSpeedOpen = false,
+        wasColorOpen = false,
+        wasUiSlotsOpen = false,
+        wasAddAnimOpen = false,
+        wasFullAnimOpen = false,
+        wasDeleteOpen = false,
+        wasLimitOpen = false
+    }
+
+    local speedSettingsTriggerBtn, btnToggleSaves, colorTriggerBtn, uiSlotsTriggerBtn, isColorExpanded, isUiSlotsExpanded
+
+    UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Enum.KeyCode.Equals then
+            if UserInputService:GetFocusedTextBox() then return end
+
+            if isGuiVisible then
+                lastOpenState.wasOptionsOpen = optionsModalFrame.Visible
+                lastOpenState.wasSavesOpen = savesFrame.Visible
+                lastOpenState.wasSpeedOpen = hoverSpeedPanel.Visible
+                lastOpenState.wasColorOpen = hoverColorPanel.Visible
+                lastOpenState.wasUiSlotsOpen = hoverUiSlotsPanel.Visible
+                lastOpenState.wasAddAnimOpen = popupOverlay.Visible
+                lastOpenState.wasFullAnimOpen = fullPopupOverlay.Visible
+                lastOpenState.wasDeleteOpen = deleteModalOverlay.Visible
+                lastOpenState.wasLimitOpen = limitModalOverlay.Visible
+
+                if limitModalOverlay.Visible then limitModalOverlay.Visible = false end
+                if deleteModalOverlay.Visible then deleteModalOverlay.Visible = false end
+                if popupOverlay.Visible then popupOverlay.Visible = false end
+                if fullPopupOverlay.Visible then fullPopupOverlay.Visible = false end
+
+                if hoverColorPanel.Visible then
+                    hoverColorPanel.Visible = false
+                    hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+                    isColorExpanded = false
+                    if colorTriggerBtn then colorTriggerBtn.Text = "▼" end
+                end
+
+                if hoverUiSlotsPanel.Visible then
+                    hoverUiSlotsPanel.Visible = false
+                    hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+                    isUiSlotsExpanded = false
+                    if uiSlotsTriggerBtn then uiSlotsTriggerBtn.Text = "▼" end
+                end
+
+                if optionsModalFrame.Visible then
+                    local t = TweenService:Create(optionsModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 10 })
+                    t:Play()
+                    t.Completed:Wait()
+                    optionsModalFrame.Visible = false
+                    optionsModalFrame.Rotation = 0
+                end
+
+                if savesFrame.Visible then
+                    local t = TweenService:Create(savesFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = UDim2.new(1, -20, 0, -380), Rotation = 0 })
+                    t:Play()
+                    t.Completed:Wait()
+                    savesFrame.Visible = false
+                    savesFrame.Position = UDim2.new(1, -20, 0.5, -90)
+                    btnToggleSaves.Text = "Custom Saves: OFF"
+                end
+
+                if hoverSpeedPanel.Visible then
+                    local t = TweenService:Create(hoverSpeedPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(230, 0) })
+                    t:Play()
+                    t.Completed:Wait()
+                    hoverSpeedPanel.Visible = false
+                    speedSettingsTriggerBtn.Text = "▼"
+                end
+
+                task.wait(0.1)
+
+                local groundTween = TweenService:Create(mainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+                    Position = UDim2.new(0, 20, 1, 50)
+                })
+                groundTween:Play()
+                groundTween.Completed:Wait()
+
+                gui.Enabled = false
+                killTriggerBtn.Visible = false
+                isGuiVisible = false
+            else
+                gui.Enabled = true
+                killTriggerBtn.Visible = true
+                mainFrame.Position = UDim2.new(0, 20, 1, 50)
+                
+                local riseTween = TweenService:Create(mainFrame, TweenInfo.new(0.6, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Position = UDim2.new(0, 20, 0.5, -customUiConfig.height / 2)
+                })
+                riseTween:Play()
+                riseTween.Completed:Wait()
+
+                if lastOpenState.wasSpeedOpen then
+                    hoverSpeedPanel.Visible = true
+                    hoverSpeedPanel.Size = UDim2.fromOffset(230, 0)
+                    local t = TweenService:Create(hoverSpeedPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(230, 115) })
+                    t:Play()
+                    speedSettingsTriggerBtn.Text = "▼"
+                    t.Completed:Wait()
+                end
+
+                if lastOpenState.wasSavesOpen then
+                    savesFrame.Visible = true
+                    savesFrame.Position = UDim2.new(1, -20, 0, -380)
+                    savesFrame.Rotation = 180
+                    btnToggleSaves.Text = "Custom Saves: ON"
+                    local t = TweenService:Create(savesFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(1, -20, 0.5, -90), Rotation = 0 })
+                    t:Play()
+                    t.Completed:Wait()
+                end
+
+                if lastOpenState.wasOptionsOpen then
+                    optionsModalFrame.Visible = true
+                    optionsModalFrame.Size = UDim2.fromOffset(0, 0)
+                    optionsModalFrame.Rotation = -10
+                    local t = TweenService:Create(optionsModalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, 250), Rotation = 0 })
+                    t:Play()
+                    t.Completed:Wait()
+
+                    if lastOpenState.wasColorOpen then
+                        hoverColorPanel.Visible = true
+                        hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+                        local tCol = TweenService:Create(hoverColorPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, 220) })
+                        tCol:Play()
+                        isColorExpanded = true
+                        if colorTriggerBtn then colorTriggerBtn.Text = "▲" end
+                    end
+
+                    if lastOpenState.wasUiSlotsOpen then
+                        hoverUiSlotsPanel.Visible = true
+                        hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+                        local tUs = TweenService:Create(hoverUiSlotsPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, 220) })
+                        tUs:Play()
+                        isUiSlotsExpanded = true
+                        if uiSlotsTriggerBtn then uiSlotsTriggerBtn.Text = "▲" end
+                    end
+                end
+
+                if lastOpenState.wasAddAnimOpen then popupOverlay.Visible = true end
+                if lastOpenState.wasFullAnimOpen then fullPopupOverlay.Visible = true end
+                if lastOpenState.wasDeleteOpen then deleteModalOverlay.Visible = true end
+                if lastOpenState.wasLimitOpen then limitModalOverlay.Visible = true end
+
+                isGuiVisible = true
+            end
+        end
+    end)
+
+    local function makeDraggable(frame)
+        local dragging = false
+        local dragStart
+        local startPos
+
+        frame.InputBegan:Connect(function(input)
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1
+                and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+
+            if UserInputService:GetFocusedTextBox() then return end
+
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end)
+
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseMovement
+                and input.UserInputType ~= Enum.UserInputType.Touch then
+                return
+            end
+
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end)
+    end
+
+    makeDraggable(mainFrame)
+    makeDraggable(savesFrame)
+    makeDraggable(limitModalFrame)
+    makeDraggable(modalFrame)
+    makeDraggable(fullModalFrame)
+    makeDraggable(deleteModalFrame)
+
+    local mainCorner = Instance.new("UICorner", mainFrame)
+    mainCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(mainFrame)
+
+    local savesCorner = Instance.new("UICorner", savesFrame)
+    savesCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(savesFrame)
+
+    local optionsModalCorner = Instance.new("UICorner", optionsModalFrame)
+    optionsModalCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(optionsModalFrame)
+
+    local hcpCorner = Instance.new("UICorner", hoverColorPanel)
+    hcpCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(hoverColorPanel)
+
+    local huspCorner = Instance.new("UICorner", hoverUiSlotsPanel)
+    huspCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(hoverUiSlotsPanel)
+
+    colorTriggerBtn = Instance.new("TextButton", optionsModalFrame)
+    colorTriggerBtn.Size = UDim2.fromOffset(40, 32)
+    colorTriggerBtn.Position = UDim2.fromOffset(15, 205)
+    colorTriggerBtn.BackgroundColor3 = customUiConfig.textBgColor
+    colorTriggerBtn.TextColor3 = customUiConfig.textColor
+    colorTriggerBtn.Font = Enum.Font.GothamBold
+    colorTriggerBtn.TextSize = 12
+    colorTriggerBtn.ZIndex = 53
+    colorTriggerBtn.Text = "▼"
+    local ctbCorner = Instance.new("UICorner", colorTriggerBtn)
+    ctbCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(colorTriggerBtn)
+
+    local limitModalCorner = Instance.new("UICorner", limitModalFrame)
+    limitModalCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(limitModalFrame)
+
+    local bigSliderOverlay = Instance.new("Frame", gui)
+    bigSliderOverlay.Size = UDim2.fromScale(1, 1)
+    bigSliderOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+    bigSliderOverlay.BackgroundTransparency = 1
+    bigSliderOverlay.Visible = false
+    bigSliderOverlay.ZIndex = 200
+
+    local bigSliderContainer = Instance.new("Frame", bigSliderOverlay)
+    bigSliderContainer.Size = UDim2.new(0.8, 0, 0, 100)
+    bigSliderContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+    bigSliderContainer.Position = UDim2.fromScale(0.5, 0.5)
+    bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
+    bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
+    bigSliderContainer.BorderSizePixel = 0
+    bigSliderContainer.ZIndex = 201
+    local bscCorner = Instance.new("UICorner", bigSliderContainer)
+    bscCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(bigSliderContainer)
+
+    local bigSliderTitle = Instance.new("TextLabel", bigSliderContainer)
+    bigSliderTitle.Size = UDim2.new(1, -40, 0, 30)
+    bigSliderTitle.Position = UDim2.fromOffset(20, 15)
+    bigSliderTitle.BackgroundTransparency = 1
+    bigSliderTitle.TextColor3 = customUiConfig.textColor
+    bigSliderTitle.Font = Enum.Font.GothamBold
+    bigSliderTitle.TextSize = 18
+    bigSliderTitle.TextXAlignment = Enum.TextXAlignment.Left
+    bigSliderTitle.ZIndex = 202
+    bigSliderTitle.Text = "Slider Name"
+
+    local bigSliderBar = Instance.new("Frame", bigSliderContainer)
+    bigSliderBar.Size = UDim2.new(1, -40, 0, 16)
+    bigSliderBar.Position = UDim2.new(0, 20, 0, 60)
+    bigSliderBar.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+    bigSliderBar.BorderSizePixel = 0
+    bigSliderBar.ZIndex = 202
+    local bsBarCorner = Instance.new("UICorner", bigSliderBar)
+    bsBarCorner.CornerRadius = UDim.new(1, 0)
+    addProfessionalStroke(bigSliderBar)
+
+    local bigSliderFill = Instance.new("Frame", bigSliderBar)
+    bigSliderFill.Size = UDim2.new(0, 0, 1, 0)
+    bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
+    bigSliderFill.BorderSizePixel = 0
+    bigSliderFill.ZIndex = 203
+    local bsFillCorner = Instance.new("UICorner", bigSliderFill)
+    bsFillCorner.CornerRadius = UDim.new(1, 0)
+
+    local bigSliderButton = Instance.new("TextButton", bigSliderBar)
+    bigSliderButton.Size = UDim2.fromScale(1, 1)
+    bigSliderButton.BackgroundTransparency = 1
+    bigSliderButton.Text = ""
+    bigSliderButton.ZIndex = 204
+
+    local cursorSpeedLabel = Instance.new("TextLabel", bigSliderOverlay)
+    cursorSpeedLabel.Size = UDim2.fromOffset(100, 24)
+    cursorSpeedLabel.BackgroundTransparency = 0.3
+    cursorSpeedLabel.BackgroundColor3 = customUiConfig.textBgColor
+    cursorSpeedLabel.TextColor3 = customUiConfig.textColor
+    cursorSpeedLabel.Font = Enum.Font.GothamBold
+    cursorSpeedLabel.TextSize = 13
+    cursorSpeedLabel.Text = "0.0"
+    cursorSpeedLabel.Visible = false
+    cursorSpeedLabel.ZIndex = 210
+    local cslCorner = Instance.new("UICorner", cursorSpeedLabel)
+    cslCorner.CornerRadius = UDim.new(0, 4)
+    addProfessionalStroke(cursorSpeedLabel)
+
+    local modalCorner = Instance.new("UICorner", modalFrame)
+    modalCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(modalFrame)
+
+    local fullModalCorner = Instance.new("UICorner", fullModalFrame)
+    fullModalCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(fullModalFrame)
+
+    local deleteModalCorner = Instance.new("UICorner", deleteModalFrame)
+    deleteModalCorner.CornerRadius = UDim.new(0, 8)
+    addProfessionalStroke(deleteModalFrame)
+
+    local managedTextObjects = {}
+    local managedInteractiveButtons = {}
+    local managedSliders = {}
+    local managedTextBgObjects = {}
+    local protectedColorCustomizerButtons = {}
+
+    local function protectColorCustomizerButton(button)
+        protectedColorCustomizerButtons[button] = true
+    end
+
+    protectColorCustomizerButton(colorTriggerBtn)
+
+    local refreshSavesUI
+    local tallEnabled = false
+    local shortEnabled = false
+    local ragdollEnabled = false
+
+    local function mk(parent, cls, y, h, text)
+        local o = Instance.new(cls, parent)
+        o.Size = UDim2.fromOffset(230, h)
+        o.Position = UDim2.fromOffset(10, y)
+        o.BackgroundColor3 = customUiConfig.textBgColor
+        o.TextColor3 = customUiConfig.textColor
+        o.Font = Enum.Font.GothamSemibold
+        o.TextSize = customUiConfig.textSize
+        if text then o.Text = text end
         
-        for i = 1, math.min(Max, #validCharacters) do
-            table.insert(finalTargets, validCharacters[i].Character)
+        local corner = Instance.new("UICorner", o)
+        corner.CornerRadius = UDim.new(0, 6)
+        addProfessionalStroke(o)
+        
+        table.insert(managedTextObjects, o)
+        table.insert(managedInteractiveButtons, o)
+        if cls == "TextButton" then
+            addHoverAnimation(o)
+        end
+        return o
+    end
+
+    local function mkModal(parent, cls, x, y, w, h, text)
+        local o = Instance.new(cls)
+        o.Size = UDim2.fromOffset(w, h)
+        o.Position = UDim2.fromOffset(x, y)
+        o.BackgroundColor3 = customUiConfig.textBgColor
+        o.TextColor3 = customUiConfig.textColor
+        o.Font = Enum.Font.GothamSemibold
+        o.TextSize = customUiConfig.textSize
+
+        if parent == modalFrame then
+            o.ZIndex = 12
+        elseif parent == fullModalFrame then
+            o.ZIndex = 17
+        elseif parent == deleteModalFrame then
+            o.ZIndex = 42
+        elseif parent == limitModalFrame then
+            o.ZIndex = 72
+        else
+            o.ZIndex = 22
+        end
+
+        if text then o.Text = text end
+        o.Parent = parent
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 6)
+        corner.Parent = o
+
+        addProfessionalStroke(o)
+        table.insert(managedTextObjects, o)
+        table.insert(managedInteractiveButtons, o)
+        if cls == "TextButton" then
+            addHoverAnimation(o)
+        end
+        return o
+    end
+
+    local speedometerLabel = Instance.new("TextLabel", mainFrame)
+    speedometerLabel.Size = UDim2.fromOffset(160, 24)
+    speedometerLabel.Position = UDim2.fromOffset(10, 10)
+    speedometerLabel.BackgroundTransparency = 1
+    speedometerLabel.TextColor3 = customUiConfig.textColor
+    speedometerLabel.Font = Enum.Font.GothamBold
+    speedometerLabel.TextSize = math.max(10, customUiConfig.textSize - 1)
+    speedometerLabel.TextXAlignment = Enum.TextXAlignment.Left
+    speedometerLabel.Text = "Current Speed: 0.0"
+    table.insert(managedTextObjects, speedometerLabel)
+
+    speedSettingsTriggerBtn = Instance.new("TextButton", mainFrame)
+    speedSettingsTriggerBtn.Size = UDim2.fromOffset(55, 24)
+    speedSettingsTriggerBtn.Position = UDim2.fromOffset(185, 10)
+    speedSettingsTriggerBtn.BackgroundColor3 = customUiConfig.textBgColor
+    speedSettingsTriggerBtn.TextColor3 = customUiConfig.textColor
+    speedSettingsTriggerBtn.Font = Enum.Font.GothamBold
+    speedSettingsTriggerBtn.TextSize = 12
+    speedSettingsTriggerBtn.Text = "▲"
+    table.insert(managedTextObjects, speedSettingsTriggerBtn)
+    table.insert(managedInteractiveButtons, speedSettingsTriggerBtn)
+    addHoverAnimation(speedSettingsTriggerBtn)
+    local sstCorner = Instance.new("UICorner", speedSettingsTriggerBtn)
+    sstCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(speedSettingsTriggerBtn)
+
+    local box = mk(mainFrame, "TextBox", 163, 32)
+    box.PlaceholderText = "Animation ID"
+    box.Text = ""
+    box.ClearTextOnFocus = false
+
+    local btn = mk(mainFrame, "TextButton", 203, 32, "Play")
+    local btnTall = mk(mainFrame, "TextButton", 243, 32, "Tall: OFF")
+    local btnShort = mk(mainFrame, "TextButton", 283, 32, "Short: OFF")
+    local btnRagdoll = mk(mainFrame, "TextButton", 323, 32, "Ragdoll: OFF")
+    btnToggleSaves = mk(mainFrame, "TextButton", 363, 32, "Custom Saves: OFF")
+    local btnSettings = mk(mainFrame, "TextButton", 403, 32, "Settings")
+
+    local sliderContainerParent = Instance.new("Frame", hoverSpeedPanel)
+    sliderContainerParent.Size = UDim2.fromOffset(210, 95)
+    sliderContainerParent.Position = UDim2.fromOffset(10, 10)
+    sliderContainerParent.BackgroundTransparency = 1
+    sliderContainerParent.ZIndex = 31
+
+    local optTitle = Instance.new("TextLabel", optionsModalFrame)
+    optTitle.Size = UDim2.fromOffset(340, 24)
+    optTitle.Position = UDim2.fromOffset(20, 15)
+    optTitle.BackgroundTransparency = 1
+    optTitle.TextColor3 = customUiConfig.textColor
+    optTitle.Font = Enum.Font.GothamBold
+    optTitle.TextSize = 16
+    optTitle.ZIndex = 52
+    optTitle.Text = "UI Options Menu"
+    table.insert(managedTextObjects, optTitle)
+
+    local optCloseBtn = Instance.new("TextButton", optionsModalFrame)
+    optCloseBtn.Size = UDim2.fromOffset(210, 32)
+    optCloseBtn.Position = UDim2.fromOffset(65, 205)
+    optCloseBtn.BackgroundColor3 = customUiConfig.textBgColor
+    optCloseBtn.TextColor3 = customUiConfig.textColor
+    optCloseBtn.Font = Enum.Font.GothamSemibold
+    optCloseBtn.TextSize = 13
+    optCloseBtn.ZIndex = 52
+    optCloseBtn.Text = "Close"
+    table.insert(managedTextObjects, optCloseBtn)
+    table.insert(managedInteractiveButtons, optCloseBtn)
+    addHoverAnimation(optCloseBtn)
+    local ocCorner = Instance.new("UICorner", optCloseBtn)
+    ocCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(optCloseBtn)
+
+    uiSlotsTriggerBtn = Instance.new("TextButton", optionsModalFrame)
+    uiSlotsTriggerBtn.Size = UDim2.fromOffset(40, 32)
+    uiSlotsTriggerBtn.Position = UDim2.fromOffset(325, 205)
+    uiSlotsTriggerBtn.BackgroundColor3 = customUiConfig.textBgColor
+    uiSlotsTriggerBtn.TextColor3 = customUiConfig.textColor
+    uiSlotsTriggerBtn.Font = Enum.Font.GothamBold
+    uiSlotsTriggerBtn.TextSize = 12
+    uiSlotsTriggerBtn.ZIndex = 52
+    uiSlotsTriggerBtn.Text = "▼"
+    protectColorCustomizerButton(uiSlotsTriggerBtn)
+    table.insert(managedTextObjects, uiSlotsTriggerBtn)
+    table.insert(managedInteractiveButtons, uiSlotsTriggerBtn)
+    addHoverAnimation(uiSlotsTriggerBtn)
+    local ustCorner = Instance.new("UICorner", uiSlotsTriggerBtn)
+    ustCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(uiSlotsTriggerBtn)
+
+    local function updateUiThemeAndScale()
+        mainFrame.BackgroundColor3 = customUiConfig.bgColor
+        mainFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        savesFrame.BackgroundColor3 = customUiConfig.bgColor
+        savesFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        optionsModalFrame.BackgroundColor3 = customUiConfig.bgColor
+        optionsModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        hoverColorPanel.BackgroundColor3 = customUiConfig.bgColor
+        hoverColorPanel.BackgroundTransparency = customUiConfig.bgTransparency
+        hoverUiSlotsPanel.BackgroundColor3 = customUiConfig.bgColor
+        hoverUiSlotsPanel.BackgroundTransparency = customUiConfig.bgTransparency
+        hoverSpeedPanel.BackgroundColor3 = customUiConfig.bgColor
+        hoverSpeedPanel.BackgroundTransparency = customUiConfig.bgTransparency
+        modalFrame.BackgroundColor3 = customUiConfig.bgColor
+        modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        fullModalFrame.BackgroundColor3 = customUiConfig.bgColor
+        fullModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        deleteModalFrame.BackgroundColor3 = customUiConfig.bgColor
+        deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
+        limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
+        bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
+
+        mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
+
+        for _, obj in ipairs(managedTextObjects) do
+            if obj and obj.Parent and not protectedColorCustomizerButtons[obj] then
+                if obj ~= speedometerLabel then
+                    obj.TextSize = customUiConfig.textSize
+                end
+                obj.TextColor3 = customUiConfig.textColor
+            end
+        end
+
+        for _, btnObj in ipairs(managedInteractiveButtons) do
+            if btnObj and btnObj.Parent and not protectedColorCustomizerButtons[btnObj] then
+                btnObj.BackgroundColor3 = customUiConfig.textBgColor
+            end
+        end
+
+        for _, s in ipairs(managedSliders) do
+            if s and s.Parent then
+                s.BackgroundColor3 = customUiConfig.sliderColor
+            end
+        end
+        if bigSliderFill then
+            bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
+        end
+    end
+
+    local function createOptionSlider(yPos, labelText, minVal, maxVal, defaultVal, currentVal, callback)
+        local lbl = Instance.new("TextLabel", optionsModalFrame)
+        lbl.Size = UDim2.fromOffset(260, 16)
+        lbl.Position = UDim2.fromOffset(20, yPos)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = customUiConfig.textColor
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 12
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = 52
+        lbl.Text = labelText .. ": " .. string.format("%.1f", currentVal)
+        table.insert(managedTextObjects, lbl)
+
+        local defBtn = Instance.new("TextButton", optionsModalFrame)
+        defBtn.Size = UDim2.fromOffset(65, 18)
+        defBtn.Position = UDim2.fromOffset(295, yPos - 2)
+        defBtn.BackgroundColor3 = customUiConfig.textBgColor
+        defBtn.TextColor3 = customUiConfig.textColor
+        defBtn.Font = Enum.Font.GothamSemibold
+        defBtn.TextSize = 10
+        defBtn.ZIndex = 52
+        defBtn.Text = "Default"
+        table.insert(managedTextObjects, defBtn)
+        table.insert(managedInteractiveButtons, defBtn)
+        addHoverAnimation(defBtn)
+        local dbCorner = Instance.new("UICorner", defBtn)
+        dbCorner.CornerRadius = UDim.new(0, 4)
+        addProfessionalStroke(defBtn)
+
+        local bar = Instance.new("Frame", optionsModalFrame)
+        bar.Size = UDim2.fromOffset(340, 10)
+        bar.Position = UDim2.fromOffset(20, yPos + 18)
+        bar.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+        bar.BorderSizePixel = 0
+        bar.ZIndex = 52
+        local bc = Instance.new("UICorner", bar)
+        bc.CornerRadius = UDim.new(1, 0)
+        addProfessionalStroke(bar)
+
+        local fill = Instance.new("Frame", bar)
+        local initialRatio = math.clamp((currentVal - minVal) / (maxVal - minVal), 0, 1)
+        fill.Size = UDim2.new(initialRatio, 0, 1, 0)
+        fill.BackgroundColor3 = customUiConfig.sliderColor
+        fill.BorderSizePixel = 0
+        fill.ZIndex = 53
+        table.insert(managedSliders, fill)
+        local fc = Instance.new("UICorner", fill)
+        fc.CornerRadius = UDim.new(1, 0)
+
+        local btn = Instance.new("TextButton", bar)
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundTransparency = 1
+        btn.Text = ""
+        btn.ZIndex = 54
+
+        local function applyVal(val)
+            val = math.clamp(math.round(val * 10) / 10, minVal, maxVal)
+            local ratio = math.clamp((val - minVal) / (maxVal - minVal), 0, 1)
+            fill.Size = UDim2.new(ratio, 0, 1, 0)
+            lbl.Text = labelText .. ": " .. string.format("%.1f", val)
+            callback(val)
+        end
+
+        defBtn.MouseButton1Click:Connect(function() applyVal(defaultVal) end)
+
+        local dragging = false
+        btn.MouseButton1Down:Connect(function() dragging = true end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if not dragging then return end
+            local isMouseInput = input.UserInputType == Enum.UserInputType.MouseMovement
+            local isTouchInput = input.UserInputType == Enum.UserInputType.Touch
+            if not isMouseInput and not isTouchInput then return end
+
+            local pointerX = isTouchInput and input.Position.X or UserInputService:GetMouseLocation().X
+            local barPos = bar.AbsolutePosition.X
+            local barSize = bar.AbsoluteSize.X
+            if barSize <= 0 then return end
+
+            local ratio = math.clamp((pointerX - barPos) / barSize, 0, 1)
+            local val = minVal + ratio * (maxVal - minVal)
+            applyVal(val)
+        end)
+    end
+
+    createOptionSlider(45, "GUI Height", 250, 600, 360, customUiConfig.height, function(v)
+        customUiConfig.height = math.round(v)
+        updateUiThemeAndScale()
+        saveSavesToFile()
+    end)
+
+    createOptionSlider(90, "Text Size", 10, 24, 14, customUiConfig.textSize, function(v)
+        customUiConfig.textSize = math.round(v)
+        updateUiThemeAndScale()
+        saveSavesToFile()
+    end)
+
+    createOptionSlider(135, "Transparency", 0, 0.95, 0.03, customUiConfig.bgTransparency, function(v)
+        customUiConfig.bgTransparency = v
+        updateUiThemeAndScale()
+        saveSavesToFile()
+    end)
+
+    local ccTitle = Instance.new("TextLabel", hoverColorPanel)
+    ccTitle.Size = UDim2.fromOffset(340, 24)
+    ccTitle.Position = UDim2.fromOffset(20, 10)
+    ccTitle.BackgroundTransparency = 1
+    ccTitle.TextColor3 = customUiConfig.textColor
+    ccTitle.Font = Enum.Font.GothamBold
+    ccTitle.TextSize = 15
+    ccTitle.ZIndex = 56
+    ccTitle.Text = "Advanced Color Customizer"
+    table.insert(managedTextObjects, ccTitle)
+
+    local currentSelectedTarget = "background"
+    local targetButtons = {}
+
+    local COLOR_CUSTOMIZER_BUTTON_BG = Color3.fromRGB(24, 24, 30)
+    local COLOR_CUSTOMIZER_BUTTON_SELECTED = Color3.fromRGB(12, 12, 16)
+    local COLOR_CUSTOMIZER_BUTTON_TEXT = Color3.fromRGB(240, 240, 245)
+
+    local function updateTargetButtonStyle(tBtn, selected)
+        tBtn.TextColor3 = COLOR_CUSTOMIZER_BUTTON_TEXT
+        if selected then
+            tBtn.BackgroundColor3 = COLOR_CUSTOMIZER_BUTTON_SELECTED
+            if not tBtn:FindFirstChild("NeonGlow") then
+                local stroke = Instance.new("UIStroke")
+                stroke.Name = "NeonGlow"
+                stroke.Color = Color3.fromRGB(120, 180, 255)
+                stroke.Transparency = 0.2
+                stroke.Thickness = 1.5
+                stroke.Parent = tBtn
+            end
+        else
+            tBtn.BackgroundColor3 = COLOR_CUSTOMIZER_BUTTON_BG
+            local stroke = tBtn:FindFirstChild("NeonGlow")
+            if stroke then stroke:Destroy() end
+        end
+    end
+
+    local function createTargetToggle(x, text, key)
+        local tBtn = Instance.new("TextButton", hoverColorPanel)
+        tBtn.Size = UDim2.fromOffset(80, 26)
+        tBtn.Position = UDim2.fromOffset(x, 40)
+        tBtn.TextColor3 = customUiConfig.textColor
+        tBtn.Font = Enum.Font.GothamSemibold
+        tBtn.TextSize = 11
+        tBtn.ZIndex = 56
+        tBtn.Text = text
+
+        protectColorCustomizerButton(tBtn)
+        addHoverAnimation(tBtn)
+        table.insert(managedTextObjects, tBtn)
+        table.insert(managedTextBgObjects, tBtn)
+
+        local c = Instance.new("UICorner", tBtn)
+        c.CornerRadius = UDim.new(0, 6)
+        addProfessionalStroke(tBtn)
+        updateTargetButtonStyle(tBtn, currentSelectedTarget == key)
+
+        tBtn.MouseButton1Click:Connect(function()
+            currentSelectedTarget = key
+            for targetKey, btnObj in pairs(targetButtons) do
+                updateTargetButtonStyle(btnObj, targetKey == currentSelectedTarget)
+            end
+        end)
+        targetButtons[key] = tBtn
+    end
+
+    createTargetToggle(20, "Background", "background")
+    createTargetToggle(105, "Text", "text")
+    createTargetToggle(190, "TextBg", "textBg")
+    createTargetToggle(275, "Sliders", "slider")
+
+    local wheelContainer = Instance.new("Frame", hoverColorPanel)
+    wheelContainer.Size = UDim2.fromOffset(130, 130)
+    wheelContainer.Position = UDim2.fromOffset(20, 75)
+    wheelContainer.BackgroundTransparency = 1
+    wheelContainer.ClipsDescendants = false
+    wheelContainer.ZIndex = 56
+
+    local wheelMask = Instance.new("Frame", wheelContainer)
+    wheelMask.Size = UDim2.fromScale(1, 1)
+    wheelMask.BackgroundTransparency = 1
+    wheelMask.ClipsDescendants = true
+    wheelMask.ZIndex = 56
+    local wmCorner = Instance.new("UICorner", wheelMask)
+    wmCorner.CornerRadius = UDim.new(1, 0)
+
+    local wheelImage = Instance.new("ImageLabel", wheelMask)
+    wheelImage.Size = UDim2.fromScale(1, -1)
+    wheelImage.AnchorPoint = Vector2.new(0.5, 0.5)
+    wheelImage.Position = UDim2.fromScale(0.5, 0.5)
+    wheelImage.Image = "rbxassetid://6020299385"
+    wheelImage.BackgroundTransparency = 1
+    wheelImage.BorderSizePixel = 0
+    wheelImage.ZIndex = 56
+    local wiCorner = Instance.new("UICorner", wheelImage)
+    wiCorner.CornerRadius = UDim.new(1, 0)
+    addProfessionalStroke(wheelImage)
+
+    local aspectConstraint = Instance.new("UIAspectRatioConstraint", wheelImage)
+    aspectConstraint.AspectRatio = 1
+
+    local crosshair = Instance.new("TextLabel", wheelContainer)
+    crosshair.Size = UDim2.fromOffset(16, 16)
+    crosshair.AnchorPoint = Vector2.new(0.5, 0.5)
+    crosshair.Position = UDim2.fromScale(0.5, 0.5)
+    crosshair.BackgroundTransparency = 1
+    crosshair.TextColor3 = Color3.fromRGB(240, 240, 245)
+    crosshair.Font = Enum.Font.GothamBold
+    crosshair.TextSize = 14
+    crosshair.ZIndex = 58
+    crosshair.Text = "⊕"
+
+    local valBar = Instance.new("Frame", hoverColorPanel)
+    valBar.Size = UDim2.fromOffset(20, 130)
+    valBar.Position = UDim2.fromOffset(165, 75)
+    valBar.BackgroundColor3 = Color3.new(1, 1, 1)
+    valBar.BorderSizePixel = 0
+    valBar.ZIndex = 56
+    local vbCorner = Instance.new("UICorner", valBar)
+    vbCorner.CornerRadius = UDim.new(0, 4)
+    addProfessionalStroke(valBar)
+
+    local valGradient = Instance.new("UIGradient", valBar)
+    valGradient.Rotation = 90
+
+    local valKnob = Instance.new("Frame", valBar)
+    valKnob.Size = UDim2.new(1, 6, 0, 8)
+    valKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+    valKnob.Position = UDim2.new(0.5, 0, 0, 0)
+    valKnob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+    valKnob.BorderSizePixel = 0
+    valKnob.ZIndex = 58
+    local vkCorner = Instance.new("UICorner", valKnob)
+    vkCorner.CornerRadius = UDim.new(1, 0)
+    addProfessionalStroke(valKnob)
+
+    local currentHue, currentSat, currentVal = 0, 0.5, 0.5
+
+    local function updateValGradient()
+        local topColor = Color3.fromHSV(currentHue, currentSat, 1)
+        local botColor = Color3.new(0, 0, 0)
+        valGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, topColor),
+            ColorSequenceKeypoint.new(1, botColor)
+        })
+    end
+    updateValGradient()
+
+    local defaultThemeBtn = Instance.new("TextButton", hoverColorPanel)
+    defaultThemeBtn.Size = UDim2.fromOffset(65, 24)
+    defaultThemeBtn.Position = UDim2.fromOffset(290, 185)
+    defaultThemeBtn.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+    defaultThemeBtn.TextColor3 = Color3.fromRGB(240, 240, 245)
+    defaultThemeBtn.Font = Enum.Font.GothamSemibold
+    defaultThemeBtn.TextSize = 11
+    defaultThemeBtn.ZIndex = 56
+    defaultThemeBtn.Text = "Default"
+
+    protectColorCustomizerButton(defaultThemeBtn)
+    addHoverAnimation(defaultThemeBtn)
+    table.insert(managedTextObjects, defaultThemeBtn)
+    table.insert(managedInteractiveButtons, defaultThemeBtn)
+    local dtbCorner = Instance.new("UICorner", defaultThemeBtn)
+    dtbCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(defaultThemeBtn)
+
+    defaultThemeBtn.MouseButton1Click:Connect(function()
+        customUiConfig.height = 360
+        customUiConfig.textSize = 14
+        customUiConfig.bgColor = Color3.fromRGB(16, 16, 19)
+        customUiConfig.textColor = Color3.fromRGB(240, 240, 245)
+        customUiConfig.textBgColor = Color3.fromRGB(24, 24, 28)
+        customUiConfig.sliderColor = Color3.fromRGB(120, 180, 255)
+        customUiConfig.bgTransparency = 0.03
+        updateUiThemeAndScale()
+        saveSavesToFile()
+        showNotification("Restored default theme.")
+    end)
+
+    local uiSlotsTitle = Instance.new("TextLabel", hoverUiSlotsPanel)
+    uiSlotsTitle.Size = UDim2.fromOffset(340, 24)
+    uiSlotsTitle.Position = UDim2.fromOffset(20, 10)
+    uiSlotsTitle.BackgroundTransparency = 1
+    uiSlotsTitle.TextColor3 = customUiConfig.textColor
+    uiSlotsTitle.Font = Enum.Font.GothamBold
+    uiSlotsTitle.TextSize = 15
+    uiSlotsTitle.ZIndex = 56
+    uiSlotsTitle.Text = "UI Theme Save Slots"
+    table.insert(managedTextObjects, uiSlotsTitle)
+
+    local uiSlotNameBox = Instance.new("TextBox", hoverUiSlotsPanel)
+    uiSlotNameBox.Size = UDim2.fromOffset(255, 30)
+    uiSlotNameBox.Position = UDim2.fromOffset(20, 42)
+    uiSlotNameBox.BackgroundColor3 = customUiConfig.textBgColor
+    uiSlotNameBox.TextColor3 = customUiConfig.textColor
+    uiSlotNameBox.Font = Enum.Font.GothamSemibold
+    uiSlotNameBox.TextSize = 13
+    uiSlotNameBox.PlaceholderText = "Slot Name..."
+    uiSlotNameBox.Text = ""
+    uiSlotNameBox.ClearTextOnFocus = false
+    uiSlotNameBox.ZIndex = 56
+    protectColorCustomizerButton(uiSlotNameBox)
+    table.insert(managedTextObjects, uiSlotNameBox)
+    table.insert(managedTextBgObjects, uiSlotNameBox)
+    local usnbCorner = Instance.new("UICorner", uiSlotNameBox)
+    usnbCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(uiSlotNameBox)
+
+    local uiSlotSaveBtn = Instance.new("TextButton", hoverUiSlotsPanel)
+    uiSlotSaveBtn.Size = UDim2.fromOffset(75, 30)
+    uiSlotSaveBtn.Position = UDim2.fromOffset(285, 42)
+    uiSlotSaveBtn.BackgroundColor3 = customUiConfig.textBgColor
+    uiSlotSaveBtn.TextColor3 = customUiConfig.textColor
+    uiSlotSaveBtn.Font = Enum.Font.GothamSemibold
+    uiSlotSaveBtn.TextSize = 12
+    uiSlotSaveBtn.ZIndex = 56
+    uiSlotSaveBtn.Text = "Save"
+    protectColorCustomizerButton(uiSlotSaveBtn)
+    addHoverAnimation(uiSlotSaveBtn)
+    table.insert(managedTextObjects, uiSlotSaveBtn)
+    table.insert(managedInteractiveButtons, uiSlotSaveBtn)
+    local ussbCorner = Instance.new("UICorner", uiSlotSaveBtn)
+    ussbCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(uiSlotSaveBtn)
+
+    local uiSlotScroll = Instance.new("ScrollingFrame", hoverUiSlotsPanel)
+    uiSlotScroll.Size = UDim2.fromOffset(340, 128)
+    uiSlotScroll.Position = UDim2.fromOffset(20, 80)
+    uiSlotScroll.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+    uiSlotScroll.BorderSizePixel = 0
+    uiSlotScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    uiSlotScroll.ZIndex = 56
+    local ussCorner = Instance.new("UICorner", uiSlotScroll)
+    ussCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(uiSlotScroll)
+
+    local refreshUiSlotsUI
+    refreshUiSlotsUI = function()
+        for _, child in ipairs(uiSlotScroll:GetChildren()) do
+            if child:IsA("TextButton") then child:Destroy() end
+        end
+
+        if not saveData.uiSaveSlots then saveData.uiSaveSlots = {} end
+
+        local count = 0
+        for slotName, slotData in pairs(saveData.uiSaveSlots) do
+            count = count + 1
+            local slotBtn = Instance.new("TextButton", uiSlotScroll)
+            slotBtn.Size = UDim2.fromOffset(320, 28)
+            slotBtn.Position = UDim2.fromOffset(10, (count - 1) * 32 + 5)
+            slotBtn.BackgroundColor3 = customUiConfig.textBgColor
+            slotBtn.TextColor3 = customUiConfig.textColor
+            slotBtn.Font = Enum.Font.Gotham
+            slotBtn.TextSize = 12
+            slotBtn.ZIndex = 57
+            slotBtn.Text = slotName
+
+            protectColorCustomizerButton(slotBtn)
+            addHoverAnimation(slotBtn)
+            table.insert(managedTextObjects, slotBtn)
+            table.insert(managedTextBgObjects, slotBtn)
+
+            local sc = Instance.new("UICorner", slotBtn)
+            sc.CornerRadius = UDim.new(0, 6)
+            addProfessionalStroke(slotBtn)
+
+            slotBtn.MouseButton1Click:Connect(function()
+                customUiConfig.height = slotData.height or 360
+                customUiConfig.textSize = slotData.textSize or 14
+                customUiConfig.bgTransparency = slotData.bgTransparency or 0.03
+                
+                customUiConfig.bgColor = Color3.fromRGB(slotData.bgR or 16, slotData.bgG or 16, slotData.bgB or 19)
+                customUiConfig.textColor = Color3.fromRGB(slotData.textR or 240, slotData.textG or 240, slotData.textB or 245)
+                customUiConfig.textBgColor = Color3.fromRGB(slotData.textBgR or 24, slotData.textBgG or 24, slotData.textBgB or 28)
+                customUiConfig.sliderColor = Color3.fromRGB(slotData.sliderR or 120, slotData.sliderG or 180, slotData.sliderB or 255)
+
+                updateUiThemeAndScale()
+                saveSavesToFile()
+                showNotification("Loaded UI slot: " .. slotName)
+            end)
+
+            slotBtn.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton2 then
+                    saveData.uiSaveSlots[slotName] = nil
+                    saveSavesToFile()
+                    refreshUiSlotsUI()
+                    showNotification("Deleted UI slot.")
+                end
+            end)
+        end
+        uiSlotScroll.CanvasSize = UDim2.new(0, 0, 0, count * 32)
+    end
+
+    uiSlotSaveBtn.MouseButton1Click:Connect(function()
+        local name = uiSlotNameBox.Text
+        if name ~= "" then
+            saveData.uiSaveSlots[name] = {
+                height = customUiConfig.height,
+                textSize = customUiConfig.textSize,
+                bgTransparency = customUiConfig.bgTransparency,
+                bgR = math.floor(customUiConfig.bgColor.R * 255 + 0.5),
+                bgG = math.floor(customUiConfig.bgColor.G * 255 + 0.5),
+                bgB = math.floor(customUiConfig.bgColor.B * 255 + 0.5),
+                textR = math.floor(customUiConfig.textColor.R * 255 + 0.5),
+                textG = math.floor(customUiConfig.textColor.G * 255 + 0.5),
+                textB = math.floor(customUiConfig.textColor.B * 255 + 0.5),
+                textBgR = math.floor(customUiConfig.textBgColor.R * 255 + 0.5),
+                textBgG = math.floor(customUiConfig.textBgColor.G * 255 + 0.5),
+                textBgB = math.floor(customUiConfig.textBgColor.B * 255 + 0.5),
+                sliderR = math.floor(customUiConfig.sliderColor.R * 255 + 0.5),
+                sliderG = math.floor(customUiConfig.sliderColor.G * 255 + 0.5),
+                sliderB = math.floor(customUiConfig.sliderColor.B * 255 + 0.5),
+            }
+            saveSavesToFile()
+            refreshUiSlotsUI()
+            uiSlotNameBox.Text = ""
+            showNotification("Saved UI slot!")
+        else
+            showNotification("Error: Enter a slot name.")
+        end
+    end)
+    refreshUiSlotsUI()
+
+    local function applyPickedColor(color)
+        if currentSelectedTarget == "background" then customUiConfig.bgColor = color end
+        if currentSelectedTarget == "text" then customUiConfig.textColor = color end
+        if currentSelectedTarget == "textBg" then customUiConfig.textBgColor = color end
+        if currentSelectedTarget == "slider" then customUiConfig.sliderColor = color end
+        updateUiThemeAndScale()
+        saveSavesToFile()
+    end
+
+    local wheelBtn = Instance.new("TextButton", wheelContainer)
+    wheelBtn.Size = UDim2.fromScale(1, 1)
+    wheelBtn.BackgroundTransparency = 1
+    wheelBtn.Text = ""
+    wheelBtn.ZIndex = 59
+
+    local wheelDragging = false
+    local function updateWheelFromMouse()
+        local mousePos = UserInputService:GetMouseLocation()
+        local absPos = wheelContainer.AbsolutePosition
+        local absSize = wheelContainer.AbsoluteSize
+        local center = absPos + absSize / 2
+        local offset = mousePos - center
+        local dist = offset.Magnitude
+        local maxRad = absSize.X / 2
+
+        local clampedOffset = offset
+        if dist > maxRad then clampedOffset = offset.Unit * maxRad end
+
+        currentSat = math.clamp(clampedOffset.Magnitude / maxRad, 0, 1)
+        currentHue = (math.atan2(-clampedOffset.Y, clampedOffset.X) / math.pi + 1) / 2
+
+        crosshair.Position = UDim2.new(0.5, clampedOffset.X, 0.5, clampedOffset.Y)
+        updateValGradient()
+        applyPickedColor(Color3.fromHSV(currentHue, currentSat, currentVal))
+    end
+
+    wheelBtn.MouseButton1Down:Connect(function() wheelDragging = true updateWheelFromMouse() end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then wheelDragging = false end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if wheelDragging and input.UserInputType == Enum.UserInputType.MouseMovement then updateWheelFromMouse() end
+    end)
+
+    local valBtn = Instance.new("TextButton", valBar)
+    valBtn.Size = UDim2.fromScale(1, 1)
+    valBtn.BackgroundTransparency = 1
+    valBtn.Text = ""
+    valBtn.ZIndex = 60
+
+    local valDragging = false
+    valBtn.MouseButton1Down:Connect(function() valDragging = true end)
+    UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 then valDragging = false end end)
+    UserInputService.InputChanged:Connect(function(input)
+        if valDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mouseY = UserInputService:GetMouseLocation().Y
+            local barPos = valBar.AbsolutePosition.Y
+            local barSize = valBar.AbsoluteSize.Y
+            if barSize <= 0 then return end
+            local ratio = math.clamp((mouseY - barPos) / barSize, 0, 1)
+            currentVal = 1 - ratio
+            valKnob.Position = UDim2.new(0.5, 0, ratio, 0)
+            applyPickedColor(Color3.fromHSV(currentHue, currentSat, currentVal))
+        end
+    end)
+
+    isColorExpanded = false
+    isUiSlotsExpanded = false
+
+    colorTriggerBtn.MouseButton1Click:Connect(function()
+        isColorExpanded = not isColorExpanded
+        isUiSlotsExpanded = false
+        uiSlotsTriggerBtn.Text = "▼"
+        hoverUiSlotsPanel.Visible = false
+        hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+
+        local targetHcpHeight = isColorExpanded and 220 or 0
+        if isColorExpanded then hoverColorPanel.Visible = true end
+
+        local tween = TweenService:Create(hoverColorPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, targetHcpHeight) })
+        tween:Play()
+        colorTriggerBtn.Text = isColorExpanded and "▲" or "▼"
+
+        if not isColorExpanded then
+            tween.Completed:Connect(function()
+                if not isColorExpanded then hoverColorPanel.Visible = false end
+            end)
+        end
+    end)
+
+    uiSlotsTriggerBtn.MouseButton1Click:Connect(function()
+        isUiSlotsExpanded = not isUiSlotsExpanded
+        isColorExpanded = false
+        colorTriggerBtn.Text = "▼"
+        hoverColorPanel.Visible = false
+        hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+
+        local targetUispHeight = isUiSlotsExpanded and 220 or 0
+        if isUiSlotsExpanded then hoverUiSlotsPanel.Visible = true refreshUiSlotsUI() end
+
+        local tween = TweenService:Create(hoverUiSlotsPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, targetUispHeight) })
+        tween:Play()
+        uiSlotsTriggerBtn.Text = isUiSlotsExpanded and "▲" or "▼"
+
+        if not isUiSlotsExpanded then
+            tween.Completed:Connect(function()
+                if not isUiSlotsExpanded then hoverUiSlotsPanel.Visible = false end
+            end)
+        end
+    end)
+
+    local isSpeedExpanded = false
+    speedSettingsTriggerBtn.MouseButton1Click:Connect(function()
+        isSpeedExpanded = not isSpeedExpanded
+        local targetHspHeight = isSpeedExpanded and 115 or 0
+        if isSpeedExpanded then hoverSpeedPanel.Visible = true end
+
+        local tween = TweenService:Create(hoverSpeedPanel, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(230, targetHspHeight) })
+        tween:Play()
+        speedSettingsTriggerBtn.Text = isSpeedExpanded and "▲" or "▼"
+
+        if not isSpeedExpanded then
+            tween.Completed:Connect(function()
+                if not isSpeedExpanded then hoverSpeedPanel.Visible = false end
+            end)
+        end
+    end)
+
+    btnSettings.MouseButton1Click:Connect(function()
+        if optionsModalFrame.Visible then
+            local tween = TweenService:Create(optionsModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 10 })
+            tween:Play()
+            tween.Completed:Connect(function()
+                optionsModalFrame.Visible = false
+                optionsModalFrame.Rotation = 0
+                hoverColorPanel.Visible = false
+                hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+                hoverUiSlotsPanel.Visible = false
+                hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+                isColorExpanded = false
+                isUiSlotsExpanded = false
+                colorTriggerBtn.Text = "▼"
+                uiSlotsTriggerBtn.Text = "▼"
+            end)
+        else
+            optionsModalFrame.Visible = true
+            optionsModalFrame.Size = UDim2.fromOffset(0, 0)
+            optionsModalFrame.Rotation = -10
+            TweenService:Create(optionsModalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(380, 250), Rotation = 0 }):Play()
+        end
+    end)
+
+    optCloseBtn.MouseButton1Click:Connect(function()
+        local tween = TweenService:Create(optionsModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 10 })
+        tween:Play()
+        tween.Completed:Connect(function()
+            optionsModalFrame.Visible = false
+            optionsModalFrame.Rotation = 0
+            hoverColorPanel.Visible = false
+            hoverColorPanel.Size = UDim2.fromOffset(380, 0)
+            hoverUiSlotsPanel.Visible = false
+            hoverUiSlotsPanel.Size = UDim2.fromOffset(380, 0)
+            isColorExpanded = false
+            isUiSlotsExpanded = false
+            colorTriggerBtn.Text = "▼"
+            uiSlotsTriggerBtn.Text = "▼"
+        end)
+    end)
+
+    local limitModalTitle = Instance.new("TextLabel", limitModalFrame)
+    limitModalTitle.Size = UDim2.fromOffset(260, 24)
+    limitModalTitle.Position = UDim2.fromOffset(20, 15)
+    limitModalTitle.BackgroundTransparency = 1
+    limitModalTitle.TextColor3 = customUiConfig.textColor
+    limitModalTitle.Font = Enum.Font.GothamBold
+    limitModalTitle.TextSize = 16
+    limitModalTitle.ZIndex = 72
+    limitModalTitle.Text = "Configure Limits"
+    table.insert(managedTextObjects, limitModalTitle)
+
+    local minLimitBox = mkModal(limitModalFrame, "TextBox", 20, 55, 260, 32)
+    minLimitBox.PlaceholderText = "Minimum Limit"
+    minLimitBox.Text = ""
+    minLimitBox.ClearTextOnFocus = false
+
+    local maxLimitBox = mkModal(limitModalFrame, "TextBox", 20, 97, 260, 32)
+    maxLimitBox.PlaceholderText = "Maximum Limit"
+    maxLimitBox.Text = ""
+    maxLimitBox.ClearTextOnFocus = false
+
+    local limitSaveBtn = mkModal(limitModalFrame, "TextButton", 20, 150, 120, 36, "Save")
+    local limitCancelBtn = mkModal(limitModalFrame, "TextButton", 160, 150, 120, 36, "Cancel")
+    limitSaveBtn.ZIndex = 72
+    limitCancelBtn.ZIndex = 72
+
+    local activeConfiguringSlider = nil
+    local function openLimitModal(sliderLabelText)
+        if limitModalOverlay.Visible and activeConfiguringSlider == sliderLabelText then
+            limitModalOverlay.Visible = false
+            activeConfiguringSlider = nil
+            return
+        end
+
+        activeConfiguringSlider = sliderLabelText
+        if sliderLabelText == "WalkSpeed" then
+            limitModalTitle.Text = "Configure WalkSpeed Limits"
+            minLimitBox.Text = tostring(minWalkSpeedLimit)
+            maxLimitBox.Text = tostring(maxWalkSpeedLimit)
+        else
+            limitModalTitle.Text = "Configure Anim Speed Limits"
+            minLimitBox.Text = tostring(minAnimSpeedLimit)
+            maxLimitBox.Text = tostring(maxAnimSpeedLimit)
+        end
+        limitModalOverlay.Visible = true
+        limitModalFrame.Size = UDim2.fromOffset(0, 0)
+        limitModalFrame.Rotation = 8
+
+        TweenService:Create(limitModalOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
+        TweenService:Create(limitModalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 220), Rotation = 0 }):Play()
+    end
+
+    local function closeLimitModal()
+        TweenService:Create(limitModalOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+        local tween = TweenService:Create(limitModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = -8 })
+        tween:Play()
+        tween.Completed:Connect(function()
+            limitModalOverlay.Visible = false
+            limitModalFrame.Rotation = 0
+            activeConfiguringSlider = nil
+        end)
+    end
+
+    limitCancelBtn.MouseButton1Click:Connect(closeLimitModal)
+
+    local updateWalkSpeedSlider, updateAnimSpeedSlider = nil, nil
+    limitSaveBtn.MouseButton1Click:Connect(function()
+        local newMin = tonumber(minLimitBox.Text)
+        local newMax = tonumber(maxLimitBox.Text)
+        if newMin and newMax and newMin <= newMax then
+            if activeConfiguringSlider == "WalkSpeed" then
+                minWalkSpeedLimit = newMin
+                maxWalkSpeedLimit = newMax
+                if updateWalkSpeedSlider then updateWalkSpeedSlider(currentWalkSpeed, false) end
+            else
+                minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, newMin)
+                maxAnimSpeedLimit = math.max(minAnimSpeedLimit, newMax)
+                if updateAnimSpeedSlider then updateAnimSpeedSlider(currentAnimMultiplier, false) end
+            end
+            saveSavesToFile()
+            showNotification("Updated slider limits successfully!")
+        else
+            showNotification("Error: Invalid limit numbers.")
+        end
+        closeLimitModal()
+    end)
+
+    local function createSlider(yPos, labelText, defaultVal, callback, getMinLimit, getMaxLimit)
+        local label = Instance.new("TextButton")
+        label.Name = labelText .. "Label"
+        label.Size = UDim2.fromOffset(150, 16)
+        label.Position = UDim2.fromOffset(0, yPos)
+        label.BackgroundTransparency = 1
+        label.TextColor3 = customUiConfig.textColor
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = math.max(10, customUiConfig.textSize - 2)
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.ZIndex = 32
+        label.Parent = sliderContainerParent
+        table.insert(managedTextObjects, label)
+
+        local function formatLabelText(value, isResetState)
+            if labelText == "WalkSpeed" and (not isWalkSpeedActive or isResetState) then return labelText .. ": Default" end
+            if labelText == "Animation Speed" and (not isAnimSpeedActive or isResetState) then return labelText .. ": Default" end
+            return labelText .. ": " .. string.format("%.1f", value)
+        end
+
+        label.Text = formatLabelText(defaultVal, labelText == "WalkSpeed")
+        label.MouseButton1Click:Connect(function() openLimitModal(labelText) end)
+
+        local resetBtn = Instance.new("TextButton")
+        resetBtn.Name = labelText .. "Reset"
+        resetBtn.Size = UDim2.fromOffset(45, 16)
+        resetBtn.Position = UDim2.fromOffset(165, yPos)
+        resetBtn.BackgroundColor3 = customUiConfig.textBgColor
+        resetBtn.TextColor3 = customUiConfig.textColor
+        resetBtn.Font = Enum.Font.GothamSemibold
+        resetBtn.TextSize = math.max(9, customUiConfig.textSize - 4)
+        resetBtn.Text = "Reset"
+        resetBtn.ZIndex = 32
+        resetBtn.Parent = sliderContainerParent
+        table.insert(managedTextObjects, resetBtn)
+        table.insert(managedInteractiveButtons, resetBtn)
+        addHoverAnimation(resetBtn)
+        local resetCorner = Instance.new("UICorner", resetBtn)
+        resetCorner.CornerRadius = UDim.new(0, 4)
+        addProfessionalStroke(resetBtn)
+
+        local bar = Instance.new("Frame")
+        bar.Name = labelText .. "Bar"
+        bar.Size = UDim2.fromOffset(210, 8)
+        bar.Position = UDim2.fromOffset(0, yPos + 18)
+        bar.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+        bar.BorderSizePixel = 0
+        bar.ZIndex = 32
+        bar.Parent = sliderContainerParent
+
+        local barCorner = Instance.new("UICorner", bar)
+        barCorner.CornerRadius = UDim.new(1, 0)
+        addProfessionalStroke(bar)
+
+        local fill = Instance.new("Frame")
+        fill.Name = "Fill"
+        fill.Size = UDim2.new(0, 0, 1, 0)
+        fill.BackgroundColor3 = customUiConfig.sliderColor
+        fill.BorderSizePixel = 0
+        fill.ZIndex = 33
+        fill.Parent = bar
+        table.insert(managedSliders, fill)
+
+        local fillCorner = Instance.new("UICorner", fill)
+        fillCorner.CornerRadius = UDim.new(1, 0)
+
+        local sliderButton = Instance.new("TextButton")
+        sliderButton.Name = "SliderButton"
+        sliderButton.Size = UDim2.fromScale(1, 1)
+        sliderButton.BackgroundTransparency = 1
+        sliderButton.Text = ""
+        sliderButton.AutoButtonColor = false
+        sliderButton.ZIndex = 34
+        sliderButton.Parent = bar
+
+        local currentValHolder = defaultVal
+        local localDragging = false
+
+        local function updateValue(value, isReset)
+            local currentMin = tonumber(getMinLimit()) or 0
+            local currentMax = tonumber(getMaxLimit()) or currentMin
+            currentMax = math.max(currentMin, currentMax)
+            value = tonumber(value) or currentValHolder
+            value = math.clamp(math.round(value * 10) / 10, currentMin, currentMax)
+            currentValHolder = value
+
+            local range = math.max(currentMax - currentMin, 0.001)
+            local ratio = math.clamp((value - currentMin) / range, 0, 1)
+
+            fill.Size = UDim2.new(ratio, 0, 1, 0)
+            label.Text = formatLabelText(value, isReset)
+            callback(value, isReset)
+        end
+
+        if labelText == "WalkSpeed" then updateWalkSpeedSlider = updateValue else updateAnimSpeedSlider = updateValue end
+
+        resetBtn.MouseButton1Click:Connect(function()
+            if labelText == "WalkSpeed" then
+                isWalkSpeedActive = false
+                currentWalkSpeed = 16
+                if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = 16 end) end
+                updateValue(16, true)
+                showNotification("Reset WalkSpeed.")
+            else
+                isAnimSpeedActive = false
+                currentAnimMultiplier = 1.0
+                updateValue(1.0, true)
+                showNotification("Reset Anim Speed.")
+            end
+        end)
+
+        sliderButton.MouseButton1Down:Connect(function() localDragging = true end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then localDragging = false end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if not localDragging then return end
+            local isMouseInput = input.UserInputType == Enum.UserInputType.MouseMovement
+            local isTouchInput = input.UserInputType == Enum.UserInputType.Touch
+            if not isMouseInput and not isTouchInput then return end
+
+            local pointerX = isTouchInput and input.Position.X or UserInputService:GetMouseLocation().X
+            local barPosition = bar.AbsolutePosition.X
+            local barWidth = bar.AbsoluteSize.X
+            if barWidth <= 0 then return end
+
+            local ratio = math.clamp((pointerX - barPosition) / barWidth, 0, 1)
+            local minLimit = tonumber(getMinLimit()) or 0
+            local maxLimit = tonumber(getMaxLimit()) or minLimit
+            local value = minLimit + ratio * (maxLimit - minLimit)
+
+            if labelText == "WalkSpeed" then isWalkSpeedActive = true else isAnimSpeedActive = true end
+            updateValue(value, false)
+        end)
+
+        updateValue(defaultVal, true)
+    end
+
+    createSlider(5, "WalkSpeed", 16, function(val, isReset)
+        if isReset then
+            isWalkSpeedActive = false
+            currentWalkSpeed = 16
+            if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = 16 end) end
+        else
+            isWalkSpeedActive = true
+            currentWalkSpeed = val
+            if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = val end) end
+        end
+    end, function() return minWalkSpeedLimit end, function() return maxWalkSpeedLimit end)
+
+    createSlider(48, "Animation Speed", 1.0, function(val, isReset)
+        if isReset then
+            isAnimSpeedActive = false
+            currentAnimMultiplier = 1.0
+        else
+            isAnimSpeedActive = true
+            currentAnimMultiplier = val
+        end
+    end, function() return minAnimSpeedLimit end, function() return maxAnimSpeedLimit end)
+
+    box.Position = UDim2.fromOffset(10, 63)
+    btn.Position = UDim2.fromOffset(10, 103)
+    btnTall.Position = UDim2.fromOffset(10, 143)
+    btnShort.Position = UDim2.fromOffset(10, 183)
+    btnRagdoll.Position = UDim2.fromOffset(10, 223)
+    btnToggleSaves.Position = UDim2.fromOffset(10, 263)
+    btnSettings.Position = UDim2.fromOffset(10, 303)
+
+    -- Top buttons side by side
+    local btnOpenModal = mk(savesFrame, "TextButton", 16, 32, "Add Custom Anim")
+    btnOpenModal.Size = UDim2.fromOffset(225, 32)
+    btnOpenModal.Position = UDim2.fromOffset(20, 16)
+
+    local btnOpenFullModal = Instance.new("TextButton", savesFrame)
+    btnOpenFullModal.Size = UDim2.fromOffset(225, 32)
+    btnOpenFullModal.Position = UDim2.fromOffset(265, 16)
+    btnOpenFullModal.BackgroundColor3 = customUiConfig.textBgColor
+    btnOpenFullModal.TextColor3 = customUiConfig.textColor
+    btnOpenFullModal.Font = Enum.Font.GothamSemibold
+    btnOpenFullModal.TextSize = customUiConfig.textSize
+    btnOpenFullModal.Text = "Add Full Custom"
+    local bofmCorner = Instance.new("UICorner", btnOpenFullModal)
+    bofmCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(btnOpenFullModal)
+    addHoverAnimation(btnOpenFullModal)
+    table.insert(managedTextObjects, btnOpenFullModal)
+    table.insert(managedInteractiveButtons, btnOpenFullModal)
+
+    local searchBox = mk(savesFrame, "TextBox", 56, 28)
+    searchBox.Size = UDim2.fromOffset(470, 28)
+    searchBox.PlaceholderText = "Search custom animations..."
+    searchBox.Text = ""
+    searchBox.ClearTextOnFocus = false
+    searchBox.Font = Enum.Font.Gotham
+    searchBox.TextSize = customUiConfig.textSize
+
+    local leftColumnX = 20
+    local rightColumnX = 265
+
+    local overridesLabel = Instance.new("TextLabel", savesFrame)
+    overridesLabel.Size = UDim2.fromOffset(225, 18)
+    overridesLabel.Position = UDim2.fromOffset(leftColumnX, 92)
+    overridesLabel.BackgroundTransparency = 1
+    overridesLabel.TextColor3 = customUiConfig.textColor
+    overridesLabel.Font = Enum.Font.GothamBold
+    overridesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
+    overridesLabel.TextXAlignment = Enum.TextXAlignment.Left
+    overridesLabel.Text = "Overrides / Loops / Full Sets"
+    table.insert(managedTextObjects, overridesLabel)
+
+    local scrollOverrides = Instance.new("ScrollingFrame", savesFrame)
+    scrollOverrides.Size = UDim2.fromOffset(225, 245)
+    scrollOverrides.Position = UDim2.fromOffset(leftColumnX, 114)
+    scrollOverrides.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+    scrollOverrides.BorderSizePixel = 0
+    scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollOverrides.ClipsDescendants = true
+    local soCorner = Instance.new("UICorner", scrollOverrides)
+    soCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(scrollOverrides)
+
+    local divider = Instance.new("Frame", savesFrame)
+    divider.Size = UDim2.fromOffset(2, 270)
+    divider.Position = UDim2.fromOffset(254, 92)
+    divider.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    divider.BorderSizePixel = 0
+
+    local posesLabel = Instance.new("TextLabel", savesFrame)
+    posesLabel.Size = UDim2.fromOffset(225, 18)
+    posesLabel.Position = UDim2.fromOffset(rightColumnX, 92)
+    posesLabel.BackgroundTransparency = 1
+    posesLabel.TextColor3 = customUiConfig.textColor
+    posesLabel.Font = Enum.Font.GothamBold
+    posesLabel.TextSize = math.max(10, customUiConfig.textSize - 2)
+    posesLabel.TextXAlignment = Enum.TextXAlignment.Left
+    posesLabel.Text = "Pose/Dance (Right-Click)"
+    table.insert(managedTextObjects, posesLabel)
+
+    local scrollPoses = Instance.new("ScrollingFrame", savesFrame)
+    scrollPoses.Size = UDim2.fromOffset(225, 245)
+    scrollPoses.Position = UDim2.fromOffset(rightColumnX, 114)
+    scrollPoses.BackgroundColor3 = Color3.fromRGB(12, 12, 15)
+    scrollPoses.BorderSizePixel = 0
+    scrollPoses.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scrollPoses.ClipsDescendants = true
+    local spCorner = Instance.new("UICorner", scrollPoses)
+    spCorner.CornerRadius = UDim.new(0, 6)
+    addProfessionalStroke(scrollPoses)
+
+    local modalTitle = Instance.new("TextLabel", modalFrame)
+    modalTitle.Size = UDim2.fromOffset(260, 24)
+    modalTitle.Position = UDim2.fromOffset(20, 15)
+    modalTitle.BackgroundTransparency = 1
+    modalTitle.TextColor3 = customUiConfig.textColor
+    modalTitle.Font = Enum.Font.GothamBold
+    modalTitle.TextSize = 16
+    modalTitle.Text = "Add Custom Animation"
+    modalTitle.ZIndex = 12
+    table.insert(managedTextObjects, modalTitle)
+
+    local mNameBox = mkModal(modalFrame, "TextBox", 20, 50, 260, 30)
+    mNameBox.PlaceholderText = "Animation Name"
+    mNameBox.Text = ""
+    mNameBox.ClearTextOnFocus = false
+
+    local mIdBox = mkModal(modalFrame, "TextBox", 20, 90, 260, 30)
+    mIdBox.PlaceholderText = "Animation ID"
+    mIdBox.Text = ""
+    mIdBox.ClearTextOnFocus = false
+
+    local isOverrideMode = true
+    local mTypeBtn = mkModal(modalFrame, "TextButton", 20, 130, 260, 30, "Type: Override / Loop")
+    local isSpeedScaled = true
+    local mSpeedBtn = mkModal(modalFrame, "TextButton", 20, 170, 260, 30, "Speed Scaled: ON")
+    local isHipHeightEnabled = false
+    local mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "Extra Hip Height: OFF")
+
+    local mConfirmBtn = mkModal(modalFrame, "TextButton", 20, 255, 120, 36, "Save")
+    local mCancelBtn = mkModal(modalFrame, "TextButton", 160, 255, 120, 36, "Cancel")
+
+    local fullModalTitle = Instance.new("TextLabel", fullModalFrame)
+    fullModalTitle.Size = UDim2.fromOffset(300, 24)
+    fullModalTitle.Position = UDim2.fromOffset(20, 15)
+    fullModalTitle.BackgroundTransparency = 1
+    fullModalTitle.TextColor3 = customUiConfig.textColor
+    fullModalTitle.Font = Enum.Font.GothamBold
+    fullModalTitle.TextSize = 16
+    fullModalTitle.Text = "Add Full Custom Animation Set"
+    fullModalTitle.ZIndex = 17
+    table.insert(managedTextObjects, fullModalTitle)
+
+    local fNameBox = mkModal(fullModalFrame, "TextBox", 20, 50, 300, 28)
+    fNameBox.PlaceholderText = "Set Name (e.g. Pro Set)"
+    fNameBox.Text = ""
+    fNameBox.ClearTextOnFocus = false
+
+    local fIdleBox = mkModal(fullModalFrame, "TextBox", 20, 84, 300, 28)
+    fIdleBox.PlaceholderText = "Idle Animation ID"
+    fIdleBox.Text = ""
+    fIdleBox.ClearTextOnFocus = false
+
+    local fIdle2Box = mkModal(fullModalFrame, "TextBox", 20, 118, 300, 28)
+    fIdle2Box.PlaceholderText = "Idle Alt 2 Animation ID"
+    fIdle2Box.Text = ""
+    fIdle2Box.ClearTextOnFocus = false
+
+    local fWalkBox = mkModal(fullModalFrame, "TextBox", 20, 152, 300, 28)
+    fWalkBox.PlaceholderText = "Walk Animation ID"
+    fWalkBox.Text = ""
+    fWalkBox.ClearTextOnFocus = false
+
+    local fRunBox = mkModal(fullModalFrame, "TextBox", 20, 186, 300, 28)
+    fRunBox.PlaceholderText = "Run Animation ID"
+    fRunBox.Text = ""
+    fRunBox.ClearTextOnFocus = false
+
+    local fJumpBox = mkModal(fullModalFrame, "TextBox", 20, 220, 300, 28)
+    fJumpBox.PlaceholderText = "Jump Animation ID"
+    fJumpBox.Text = ""
+    fJumpBox.ClearTextOnFocus = false
+
+    local fFallBox = mkModal(fullModalFrame, "TextBox", 20, 254, 300, 28)
+    fFallBox.PlaceholderText = "Fall Animation ID"
+    fFallBox.Text = ""
+    fFallBox.ClearTextOnFocus = false
+
+    local fSwimBox = mkModal(fullModalFrame, "TextBox", 20, 288, 300, 28)
+    fSwimBox.PlaceholderText = "Swim Animation ID"
+    fSwimBox.Text = ""
+    fSwimBox.ClearTextOnFocus = false
+
+    local fClimbBox = mkModal(fullModalFrame, "TextBox", 20, 322, 300, 28)
+    fClimbBox.PlaceholderText = "Climb Animation ID"
+    fClimbBox.Text = ""
+    fClimbBox.ClearTextOnFocus = false
+
+    local fConfirmBtn = mkModal(fullModalFrame, "TextButton", 20, 365, 140, 36, "Save Full Set")
+    local fCancelBtn = mkModal(fullModalFrame, "TextButton", 180, 365, 140, 36, "Cancel")
+
+    local deleteModalTitle = Instance.new("TextLabel", deleteModalFrame)
+    deleteModalTitle.Size = UDim2.fromOffset(240, 24)
+    deleteModalTitle.Position = UDim2.fromOffset(20, 15)
+    deleteModalTitle.BackgroundTransparency = 1
+    deleteModalTitle.TextColor3 = customUiConfig.textColor
+    deleteModalTitle.Font = Enum.Font.GothamBold
+    deleteModalTitle.TextSize = 16
+    deleteModalTitle.Text = "Confirm Deletion"
+    deleteModalTitle.ZIndex = 42
+    table.insert(managedTextObjects, deleteModalTitle)
+
+    local deleteModalMsg = Instance.new("TextLabel", deleteModalFrame)
+    deleteModalMsg.Size = UDim2.fromOffset(240, 40)
+    deleteModalMsg.Position = UDim2.fromOffset(20, 45)
+    deleteModalMsg.BackgroundTransparency = 1
+    deleteModalMsg.TextColor3 = Color3.fromRGB(180, 180, 195)
+    deleteModalMsg.Font = Enum.Font.Gotham
+    deleteModalMsg.TextSize = 13
+    deleteModalMsg.TextXAlignment = Enum.TextXAlignment.Left
+    deleteModalMsg.TextYAlignment = Enum.TextYAlignment.Top
+    deleteModalMsg.TextWrapped = true
+    deleteModalMsg.Text = "Are you sure you want to delete this animation?"
+    deleteModalMsg.ZIndex = 42
+    table.insert(managedTextObjects, deleteModalMsg)
+
+    local delConfirmBtn = mkModal(deleteModalFrame, "TextButton", 20, 100, 110, 36, "Delete")
+    local delCancelBtn = mkModal(deleteModalFrame, "TextButton", 150, 100, 110, 36, "Cancel")
+    delConfirmBtn.ZIndex = 42
+    delCancelBtn.ZIndex = 42
+    delConfirmBtn.BackgroundColor3 = Color3.fromRGB(160, 45, 45)
+    addProfessionalStroke(delConfirmBtn)
+
+    local pendingDeleteIndex = nil
+    local function openDeleteModal(index, animName)
+        pendingDeleteIndex = index
+        deleteModalMsg.Text = "Are you sure you want to delete \"" .. animName .. "\"?"
+        deleteModalOverlay.Visible = true
+        deleteModalFrame.Size = UDim2.fromOffset(0, 0)
+        deleteModalFrame.Rotation = -8
+
+        TweenService:Create(deleteModalOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
+        TweenService:Create(deleteModalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(280, 160), Rotation = 0 }):Play()
+    end
+
+    local function closeDeleteModal()
+        TweenService:Create(deleteModalOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+        local tween = TweenService:Create(deleteModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+        tween:Play()
+        tween.Completed:Connect(function()
+            deleteModalOverlay.Visible = false
+            deleteModalFrame.Rotation = 0
+            pendingDeleteIndex = nil
+        end)
+    end
+
+    delCancelBtn.MouseButton1Click:Connect(closeDeleteModal)
+    delConfirmBtn.MouseButton1Click:Connect(function()
+        if pendingDeleteIndex then
+            table.remove(saveData.customSaves, pendingDeleteIndex)
+            saveSavesToFile()
+            refreshSavesUI()
+            showNotification("Deleted animation.")
+        end
+        closeDeleteModal()
+    end)
+
+    mTypeBtn.MouseButton1Click:Connect(function()
+        isOverrideMode = not isOverrideMode
+        mTypeBtn.Text = "Type: " .. (isOverrideMode and "Override / Loop" or "Pose/Dance")
+        if isOverrideMode then
+            mSpeedBtn.Visible = true
+            mHipBtn.Visible = true
+            mConfirmBtn.Position = UDim2.fromOffset(20, 255)
+            mCancelBtn.Position = UDim2.fromOffset(160, 255)
+            modalFrame.Size = UDim2.fromOffset(300, 330)
+        else
+            mSpeedBtn.Visible = false
+            mHipBtn.Visible = false
+            mConfirmBtn.Position = UDim2.fromOffset(20, 175)
+            mCancelBtn.Position = UDim2.fromOffset(160, 175)
+            modalFrame.Size = UDim2.fromOffset(300, 260)
+        end
+    end)
+
+    mSpeedBtn.MouseButton1Click:Connect(function()
+        isSpeedScaled = not isSpeedScaled
+        mSpeedBtn.Text = "Speed Scaled: " .. (isSpeedScaled and "ON" or "OFF")
+    end)
+
+    mHipBtn.MouseButton1Click:Connect(function()
+        isHipHeightEnabled = not isHipHeightEnabled
+        mHipBtn.Text = "Extra Hip Height: " .. (isHipHeightEnabled and "ON" or "OFF")
+    end)
+
+    local globalLoopConn, eventConn, enabled = nil, nil, false
+
+    local function applyHipHeight(enableExtra)
+        if not humanoid then return end
+        if enableExtra and not isExtraHipHeightActive then
+            originalHipHeight = humanoid.HipHeight
+            humanoid.HipHeight = originalHipHeight + 0.2
+            isExtraHipHeightActive = true
+        elseif not enableExtra and isExtraHipHeightActive then
+            humanoid.HipHeight = originalHipHeight
+            isExtraHipHeightActive = false
+        end
+    end
+
+    local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, displayName)
+        if not animator then showNotification("Error: No Animator found.") return false end
+        local id = idStr:match("%d+") 
+        if not id then showNotification("Error: Invalid animation ID.") return false end
+        
+        applyHipHeight(hipHeightEnabled == true)
+        local animLabel = displayName or id
+
+        if isPose then
+            if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+            if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+            
+            local a = Instance.new("Animation")
+            a.AnimationId = "rbxassetid://" .. id
+            local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+            a:Destroy()
+            if not ok or not newTrack then showNotification("Engine failed to load pose.") return false end
+            poseTrack = newTrack
+            poseTrack.Priority = HIGH
+            poseTrack.Looped = true
+            activeAnimConfig.isPose = true
+            
+            pcall(function() poseTrack:Play(0.1, 1, 1) end)
+            showNotification("Playing Pose: " .. animLabel)
+            return true
+        else
+            if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+            if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+            
+            local a = Instance.new("Animation")
+            a.AnimationId = "rbxassetid://" .. id
+            local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+            a:Destroy()
+            if not ok or not newTrack then showNotification("Engine failed to load override.") return false end
+            
+            track = newTrack
+            track.Priority = HIGH
+            track.Looped = true
+            
+            activeAnimConfig.speedScaled = (speedScaled == true)
+            activeAnimConfig.isPose = false
+            showNotification("Loaded Override: " .. animLabel)
+            return true
+        end
+    end
+
+    local function loadFullCustomSet(saveDataEntry)
+        if not animator then showNotification("Error: No Animator found.") return end
+        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+
+        activeFullSetTracks = {}
+        local function loadSubTrack(idStr, looped)
+            local cleanId = idStr and idStr:match("%d+")
+            if not cleanId then return nil end
+            local a = Instance.new("Animation")
+            a.AnimationId = "rbxassetid://" .. cleanId
+            local ok, t = pcall(function() return animator:LoadAnimation(a) end)
+            a:Destroy()
+            if ok and t then
+                t.Priority = HIGH
+                t.Looped = (looped ~= false)
+                return t
+            end
+            return nil
+        end
+
+        activeFullSetTracks.idle = loadSubTrack(saveDataEntry.idleId, true)
+        activeFullSetTracks.idle2 = loadSubTrack(saveDataEntry.idle2Id, true)
+        activeFullSetTracks.walk = loadSubTrack(saveDataEntry.walkId, true)
+        activeFullSetTracks.run = loadSubTrack(saveDataEntry.runId, true)
+        activeFullSetTracks.jump = loadSubTrack(saveDataEntry.jumpId, false)
+        activeFullSetTracks.fall = loadSubTrack(saveDataEntry.fallId, true)
+        activeFullSetTracks.swim = loadSubTrack(saveDataEntry.swimId, true)
+        activeFullSetTracks.climb = loadSubTrack(saveDataEntry.climbId, true)
+
+        local currentPlayingState = nil
+        local idleAltTimer = 0
+
+        activeFullSetConnection = RunService.RenderStepped:Connect(function(dt)
+            if not humanoid or not humanoid.Parent then return end
+            local vel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+            local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+            local state = humanoid:GetState()
+
+            local targetTrack = activeFullSetTracks.idle
+            local stateName = "idle"
+
+            if state == Enum.HumanoidStateType.Swimming then
+                targetTrack = activeFullSetTracks.swim or activeFullSetTracks.idle
+                stateName = "swim"
+            elseif state == Enum.HumanoidStateType.Climbing then
+                targetTrack = activeFullSetTracks.climb or activeFullSetTracks.idle
+                stateName = "climb"
+            elseif state == Enum.HumanoidStateType.Jumping then
+                targetTrack = activeFullSetTracks.jump or activeFullSetTracks.fall or activeFullSetTracks.idle
+                stateName = "jump"
+            elseif state == Enum.HumanoidStateType.Freefall then
+                targetTrack = activeFullSetTracks.fall or activeFullSetTracks.jump or activeFullSetTracks.idle
+                stateName = "fall"
+            elseif groundSpeed > 0.3 then
+                if groundSpeed > 19 and activeFullSetTracks.run then
+                    targetTrack = activeFullSetTracks.run
+                    stateName = "run"
+                else
+                    targetTrack = activeFullSetTracks.walk or activeFullSetTracks.idle
+                    stateName = "walk"
+                end
+                idleAltTimer = 0
+            else
+                if activeFullSetTracks.idle2 then
+                    idleAltTimer = idleAltTimer + dt
+                    if idleAltTimer > 7 then
+                        targetTrack = activeFullSetTracks.idle2
+                        stateName = "idle2"
+                        if idleAltTimer > 14 then idleAltTimer = 0 end
+                    end
+                end
+            end
+
+            if currentPlayingState ~= stateName then
+                for _, trk in pairs(activeFullSetTracks) do
+                    if trk and trk.IsPlaying then
+                        trk:Stop(0.15)
+                    end
+                end
+                currentPlayingState = stateName
+                if targetTrack then
+                    targetTrack:Play(0.15)
+                end
+            end
+
+            if targetTrack and not targetTrack.IsPlaying then
+                targetTrack:Play(0.15)
+            end
+        end)
+
+        showNotification("Loaded Full Set: " .. saveDataEntry.name)
+    end
+
+    btnTall.MouseButton1Click:Connect(function()
+        tallEnabled = not tallEnabled
+        btnTall.Text = "Tall: " .. (tallEnabled and "ON" or "OFF")
+        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+        if tallEnabled then
+            shortEnabled = false
+            btnShort.Text = "Short: OFF"
+            loadAnim("92807081069528", true, false, false, "Tall")
+            enabled = true
+            btn.Text = "Stop"
+            showNotification("Tall Anim: ON")
+        else
+            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+            enabled = false
+            btn.Text = "Play"
+            applyHipHeight(false)
+            showNotification("Tall Anim: OFF")
+        end
+    end)
+
+    btnShort.MouseButton1Click:Connect(function()
+        shortEnabled = not shortEnabled
+        btnShort.Text = "Short: " .. (shortEnabled and "ON" or "OFF")
+        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+        if shortEnabled then
+            tallEnabled = false
+            btnTall.Text = "Tall: OFF"
+            loadAnim("137317695640929", true, false, false, "Short")
+            enabled = true
+            btn.Text = "Stop"
+            showNotification("Short Anim: ON")
+        else
+            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+            enabled = false
+            btn.Text = "Play"
+            applyHipHeight(false)
+            showNotification("Short Anim: OFF")
+        end
+    end)
+
+    local ragdollConnection = nil
+    local function runRagdollPhysicsStep()
+        if not ragdollEnabled or not rootPart or not rootPart.Parent then 
+            if ragdollConnection then ragdollConnection:Disconnect() end
+            return 
+        end
+
+        local moveDir = humanoid.MoveDirection
+        local speed = currentWalkSpeed
+        local currentVel = rootPart.AssemblyLinearVelocity
+
+        if moveDir.Magnitude > 0 then
+            rootPart.AssemblyLinearVelocity = Vector3.new(moveDir.X * speed, currentVel.Y, moveDir.Z * speed)
+        end
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            if math.abs(currentVel.Y) < 1.0 then
+                rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, 50, currentVel.Z)
+            end
+        end
+    end
+
+    local function setRagdoll(state)
+        ragdollEnabled = state
+        btnRagdoll.Text = "Ragdoll: " .. (ragdollEnabled and "ON" or "OFF")
+        if not plr.Character or not humanoid or not rootPart then return end
+        local char = plr.Character
+        
+        if ragdollEnabled then
+            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+            for _, desc in ipairs(char:GetDescendants()) do
+                if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" then
+                    pcall(function() desc.CustomPhysicalProperties = PhysicalProperties.new(0.6, 0.3, 0.5, 1, 1) end)
+                end
+            end
+            if ragdollConnection then ragdollConnection:Disconnect() end
+            ragdollConnection = RunService.RenderStepped:Connect(runRagdollPhysicsStep)
+            showNotification("Ragdoll Enabled")
+        else
+            if ragdollConnection then ragdollConnection:Disconnect() end
+            for _, desc in ipairs(char:GetDescendants()) do
+                if desc:IsA("BasePart") then pcall(function() desc.CustomPhysicalProperties = nil end) end
+            end
+            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+            task.delay(0.2, function()
+                if enabled then
+                    if tallEnabled then loadAnim("92807081069528", true, false, false, "Tall")
+                    elseif shortEnabled then loadAnim("137317695640929", true, false, false, "Short")
+                    elseif box.Text ~= "" then loadAnim(box.Text, isSpeedScaled, false, isHipHeightEnabled, "Custom") end
+                end
+            end)
+            showNotification("Ragdoll Disabled")
+        end
+    end
+
+    btnRagdoll.MouseButton1Click:Connect(function() setRagdoll(not ragdollEnabled) end)
+
+    local function processAnimationLoop(dt)
+        if activeFullSetConnection then return end
+        if not animator or not animator.Parent then return end
+
+        if isWalkSpeedActive and humanoid and humanoid.Parent then
+            if humanoid.WalkSpeed ~= currentWalkSpeed then humanoid.WalkSpeed = currentWalkSpeed end
+        end
+
+        if rootPart and rootPart.Parent then
+            local velocity = rootPart.AssemblyLinearVelocity
+            local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+            if speedometerLabel and speedometerLabel.Parent then
+                speedometerLabel.Text = string.format("Current Speed: %.1f", groundSpeed)
+            end
+        end
+
+        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            if animationTrack ~= track and animationTrack ~= poseTrack then
+                if currentAnimMultiplier ~= 1.0 then
+                    pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
+                end
+            end
+        end
+
+        if enabled and (tallEnabled or shortEnabled or (track and box.Text ~= "")) then
+            if activeAnimConfig.isPose then
+                if poseTrack and not poseTrack.IsPlaying then pcall(function() poseTrack:Play(0.1, 1, 1) end) end
+            else
+                if track and (not track.IsPlaying or track.Priority ~= HIGH) then
+                    pcall(function() track.Priority = HIGH track:Play(0.1, 1, 0) end)
+                end
+            end
+        end
+
+        if not enabled then return end
+        if activeAnimConfig.isPose then
+            if poseTrack and not poseTrack.IsPlaying then pcall(function() poseTrack:Play(0.1, 1, 1) end) end
+            pcall(function() poseTrack:AdjustSpeed(currentAnimMultiplier) end)
+            return
+        end
+
+        if not track then return end
+        if not track.IsPlaying then pcall(function() track:Play(0.1, 1, 0) end) end
+        if not rootPart or not rootPart.Parent then return end
+
+        local velocity = rootPart.AssemblyLinearVelocity
+        local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+
+        if groundSpeed < 0.3 then
+            pcall(function()
+                local char = plr.Character
+                if char then
+                    local leftFoot = char:FindFirstChild("LeftFoot") or char:FindFirstChild("Left Leg")
+                    local rightFoot = char:FindFirstChild("RightFoot") or char:FindFirstChild("Right Leg")
+                    local leftHand = char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm")
+                    local rightHand = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
+                    
+                    local raycastParams = RaycastParams.new()
+                    raycastParams.FilterDescendantsInstances = {char}
+                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+                    local limbsOnGround, totalLimbsChecked = 0, 0
+                    for _, limb in ipairs({leftFoot, rightFoot, leftHand, rightHand}) do
+                        if limb and limb:IsA("BasePart") then
+                            totalLimbsChecked = totalLimbsChecked + 1
+                            local ray = workspace:Raycast(limb.Position, Vector3.new(0, -2.5, 0), raycastParams)
+                            if ray then limbsOnGround = limbsOnGround + 1 end
+                        end
+                    end
+
+                    if totalLimbsChecked > 0 and (limbsOnGround / totalLimbsChecked) >= 0.5 then
+                        local targetPosition = math.min(STATIONARY_REST_TIME, math.max((track.Length or 1) - 0.001, 0))
+                        track.TimePosition = track.TimePosition + (targetPosition - track.TimePosition) * math.clamp(dt * 10, 0, 1)
+                        track:AdjustSpeed(math.clamp(currentAnimMultiplier * 0.1, MIN_ANIM_SPEED, MAX_ANIM_SPEED))
+                        return
+                    end
+                end
+
+                local targetPosition = math.min(STATIONARY_REST_TIME, math.max((track.Length or 1) - 0.001, 0))
+                track.TimePosition = track.TimePosition + (targetPosition - track.TimePosition) * math.clamp(dt * 5, 0, 1)
+                track:AdjustSpeed(math.clamp(currentAnimMultiplier * 0.5, MIN_ANIM_SPEED, MAX_ANIM_SPEED))
+            end)
+        else
+            local animationSpeed
+            if activeAnimConfig.speedScaled then
+                local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
+                animationSpeed = math.clamp((groundSpeed / baseWalkSpeed) * currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+            else
+                animationSpeed = math.clamp(currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
+            end
+            pcall(function() track:AdjustSpeed(animationSpeed) end)
+        end
+    end
+
+    local function startAnimLoop()
+        if not animator then return end
+        if eventConn then eventConn:Disconnect(); eventConn = nil end
+
+        eventConn = animator.AnimationPlayed:Connect(function(animationTrack)
+            if not enabled then return end
+            if animationTrack ~= track and animationTrack ~= poseTrack then 
+                if currentAnimMultiplier ~= 1.0 then
+                    pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
+                end
+            end
+        end)
+
+        if globalLoopConn then return end
+        globalLoopConn = RunService.RenderStepped:Connect(processAnimationLoop)
+    end
+
+    refreshSavesUI = function()
+        for _, child in ipairs(scrollOverrides:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+        for _, child in ipairs(scrollPoses:GetChildren()) do if child:IsA("TextButton") then child:Destroy() end end
+        
+        local overrideCount, poseCount = 0, 0
+        local query = string.lower(searchBox.Text)
+        
+        local indexedSaves = {}
+        for i, save in ipairs(saveData.customSaves) do
+            table.insert(indexedSaves, {index = i, save = save})
         end
         
-        UpdateTargetCharacters(finalTargets)
-    else
-        CurrentIndex = (CurrentIndex % #validCharacters) + 1
+        table.sort(indexedSaves, function(a, b)
+            return string.lower(a.save.name) < string.lower(b.save.name)
+        end)
         
-        local targetIndex = AutoTargetNearest.Get() and 1 or CurrentIndex
-        local selectedCharacter = validCharacters[targetIndex].Character
-        
-        UpdateTargetCharacters({selectedCharacter})
+        for _, item in ipairs(indexedSaves) do
+            local i = item.index
+            local save = item.save
+            if query == "" or string.find(string.lower(save.name), query, 1, true) ~= nil then
+                if save.isFullSet then
+                    overrideCount = overrideCount + 1
+                    local saveBtnUI = Instance.new("TextButton", scrollOverrides)
+                    saveBtnUI.Size = UDim2.fromOffset(205, 28)
+                    saveBtnUI.Position = UDim2.fromOffset(10, (overrideCount - 1) * 32 + 5)
+                    saveBtnUI.BackgroundColor3 = customUiConfig.textBgColor
+                    saveBtnUI.TextColor3 = customUiConfig.textColor
+                    saveBtnUI.Font = Enum.Font.Gotham
+                    saveBtnUI.TextSize = customUiConfig.textSize
+                    table.insert(managedTextObjects, saveBtnUI)
+                    table.insert(managedInteractiveButtons, saveBtnUI)
+                    addHoverAnimation(saveBtnUI)
+                    
+                    saveBtnUI.Text = save.name .. " (Full Set)"
+                    local c = Instance.new("UICorner", saveBtnUI)
+                    c.CornerRadius = UDim.new(0, 6)
+                    addProfessionalStroke(saveBtnUI)
+                    
+                    saveBtnUI.MouseButton1Click:Connect(function()
+                        tallEnabled = false btnTall.Text = "Tall: OFF"
+                        shortEnabled = false btnShort.Text = "Short: OFF"
+                        loadFullCustomSet(save)
+                        enabled = true
+                        btn.Text = "Stop"
+                        startAnimLoop()
+                    end)
+                    saveBtnUI.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then openDeleteModal(i, save.name) end end)
+                elseif save.isOverride then
+                    overrideCount = overrideCount + 1
+                    local saveBtnUI = Instance.new("TextButton", scrollOverrides)
+                    saveBtnUI.Size = UDim2.fromOffset(205, 28)
+                    saveBtnUI.Position = UDim2.fromOffset(10, (overrideCount - 1) * 32 + 5)
+                    saveBtnUI.BackgroundColor3 = customUiConfig.textBgColor
+                    saveBtnUI.TextColor3 = customUiConfig.textColor
+                    saveBtnUI.Font = Enum.Font.Gotham
+                    saveBtnUI.TextSize = customUiConfig.textSize
+                    table.insert(managedTextObjects, saveBtnUI)
+                    table.insert(managedInteractiveButtons, saveBtnUI)
+                    addHoverAnimation(saveBtnUI)
+                    
+                    saveBtnUI.Text = save.name .. ((save.speedScaled == false) and " (Fixed)" or "")
+                    local c = Instance.new("UICorner", saveBtnUI)
+                    c.CornerRadius = UDim.new(0, 6)
+                    addProfessionalStroke(saveBtnUI)
+                    
+                    saveBtnUI.MouseButton1Click:Connect(function()
+                        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+                        tallEnabled = false btnTall.Text = "Tall: OFF"
+                        shortEnabled = false btnShort.Text = "Short: OFF"
+                        box.Text = save.id
+                        loadAnim(save.id, save.speedScaled == true, false, save.hipHeightEnabled, save.name)
+                        enabled = true
+                        btn.Text = "Stop"
+                        startAnimLoop()
+                    end)
+                    saveBtnUI.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then openDeleteModal(i, save.name) end end)
+                else
+                    poseCount = poseCount + 1
+                    local saveBtnUI = Instance.new("TextButton", scrollPoses)
+                    saveBtnUI.Size = UDim2.fromOffset(205, 28)
+                    saveBtnUI.Position = UDim2.fromOffset(10, (poseCount - 1) * 32 + 5)
+                    saveBtnUI.BackgroundColor3 = customUiConfig.textBgColor
+                    saveBtnUI.TextColor3 = customUiConfig.textColor
+                    saveBtnUI.Font = Enum.Font.Gotham
+                    saveBtnUI.TextSize = customUiConfig.textSize
+                    table.insert(managedTextObjects, saveBtnUI)
+                    table.insert(managedInteractiveButtons, saveBtnUI)
+                    addHoverAnimation(saveBtnUI)
+                    
+                    saveBtnUI.Text = save.name .. " (Pose)"
+                    local c = Instance.new("UICorner", saveBtnUI)
+                    c.CornerRadius = UDim.new(0, 6)
+                    addProfessionalStroke(saveBtnUI)
+                    
+                    saveBtnUI.MouseButton1Click:Connect(function()
+                        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+                        tallEnabled = false btnTall.Text = "Tall: OFF"
+                        shortEnabled = false btnShort.Text = "Short: OFF"
+                        box.Text = save.id
+                        loadAnim(save.id, false, true, false, save.name)
+                        enabled = true
+                        btn.Text = "Stop"
+                        startAnimLoop()
+                    end)
+                    saveBtnUI.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton2 then openDeleteModal(i, save.name) end end)
+                end
+            end
+        end
+        scrollOverrides.CanvasSize = UDim2.new(0, 0, 0, overrideCount * 32)
+        scrollPoses.CanvasSize = UDim2.new(0, 0, 0, poseCount * 32)
     end
+
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function() refreshSavesUI() end)
+    searchBox.Text = ""
+    refreshSavesUI()
+
+    btnOpenModal.MouseButton1Click:Connect(function()
+        if popupOverlay.Visible then
+            TweenService:Create(popupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+            local tween = TweenService:Create(modalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+            tween:Play() 
+            tween.Completed:Connect(function() popupOverlay.Visible = false modalFrame.Rotation = 0 end)
+        else
+            mNameBox.Text = "" mIdBox.Text = "" 
+            popupOverlay.Visible = true
+            modalFrame.Size = UDim2.fromOffset(0, 0)
+            modalFrame.Rotation = -8
+
+            TweenService:Create(popupOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
+            TweenService:Create(modalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 330), Rotation = 0 }):Play()
+        end
+    end)
+
+    btnOpenFullModal.MouseButton1Click:Connect(function()
+        if fullPopupOverlay.Visible then
+            TweenService:Create(fullPopupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+            local tween = TweenService:Create(fullModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+            tween:Play()
+            tween.Completed:Connect(function() fullPopupOverlay.Visible = false fullModalFrame.Rotation = 0 end)
+        else
+            fNameBox.Text = "" fIdleBox.Text = "" fIdle2Box.Text = "" fWalkBox.Text = "" fRunBox.Text = "" fJumpBox.Text = "" fFallBox.Text = "" fSwimBox.Text = "" fClimbBox.Text = ""
+            fullPopupOverlay.Visible = true
+            fullModalFrame.Size = UDim2.fromOffset(0, 0)
+            fullModalFrame.Rotation = -8
+
+            TweenService:Create(fullPopupOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
+            TweenService:Create(fullModalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(340, 440), Rotation = 0 }):Play()
+        end
+    end)
+
+    mCancelBtn.MouseButton1Click:Connect(function()
+        TweenService:Create(popupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+        local tween = TweenService:Create(modalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+        tween:Play() 
+        tween.Completed:Connect(function() popupOverlay.Visible = false modalFrame.Rotation = 0 end)
+    end)
+
+    fCancelBtn.MouseButton1Click:Connect(function()
+        TweenService:Create(fullPopupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+        local tween = TweenService:Create(fullModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+        tween:Play()
+        tween.Completed:Connect(function() fullPopupOverlay.Visible = false fullModalFrame.Rotation = 0 end)
+    end)
+
+    mConfirmBtn.MouseButton1Click:Connect(function()
+        local animName = mNameBox.Text
+        local animId = mIdBox.Text:match("%d+")
+        if animName ~= "" and animId then
+            table.insert(saveData.customSaves, {name = animName, id = animId, isOverride = isOverrideMode, speedScaled = isSpeedScaled, hipHeightEnabled = isHipHeightEnabled})
+            saveSavesToFile() 
+            refreshSavesUI()
+            TweenService:Create(popupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+            local tween = TweenService:Create(modalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+            tween:Play() 
+            tween.Completed:Connect(function() popupOverlay.Visible = false modalFrame.Rotation = 0 end)
+            showNotification("Saved custom animation!")
+        else
+            showNotification("Error: Invalid name/ID.")
+        end
+    end)
+
+    fConfirmBtn.MouseButton1Click:Connect(function()
+        local setName = fNameBox.Text
+        if setName ~= "" then
+            table.insert(saveData.customSaves, {
+                name = setName,
+                isFullSet = true,
+                isOverride = true,
+                idleId = fIdleBox.Text:match("%d+") or "",
+                idle2Id = fIdle2Box.Text:match("%d+") or "",
+                walkId = fWalkBox.Text:match("%d+") or "",
+                runId = fRunBox.Text:match("%d+") or "",
+                jumpId = fJumpBox.Text:match("%d+") or "",
+                fallId = fFallBox.Text:match("%d+") or "",
+                swimId = fSwimBox.Text:match("%d+") or "",
+                climbId = fClimbBox.Text:match("%d+") or ""
+            })
+            saveSavesToFile()
+            refreshSavesUI()
+            TweenService:Create(fullPopupOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
+            local tween = TweenService:Create(fullModalFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+            tween:Play()
+            tween.Completed:Connect(function() fullPopupOverlay.Visible = false fullModalFrame.Rotation = 0 end)
+            showNotification("Saved full custom animation set!")
+        else
+            showNotification("Error: Enter a valid set name.")
+        end
+    end)
+
+    local function bind(char)
+        humanoid = char:WaitForChild("Humanoid", 5)
+        if not humanoid then return end
+
+        originalWalkSpeed = 16
+        currentWalkSpeed = originalWalkSpeed
+        isWalkSpeedActive = false
+        originalHipHeight = humanoid.HipHeight
+        isExtraHipHeightActive = false
+
+        if walkSpeedConn then walkSpeedConn:Disconnect() end
+        walkSpeedConn = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+            if isWalkSpeedActive and humanoid.WalkSpeed ~= currentWalkSpeed then
+                humanoid.WalkSpeed = currentWalkSpeed
+            end
+        end)
+
+        rootPart = char:WaitForChild("HumanoidRootPart", 5)
+        animator = humanoid:WaitForChild("Animator", 5)
+
+        track = nil
+        poseTrack = nil
+        tallEnabled = false btnTall.Text = "Tall: OFF"
+        shortEnabled = false btnShort.Text = "Short: OFF"
+        ragdollEnabled = false btnRagdoll.Text = "Ragdoll: OFF"
+        btnToggleSaves.Text = "Custom Saves: OFF"
+        startAnimLoop()
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        if not enabled then
+            if not track and not poseTrack and not activeFullSetConnection and box.Text ~= "" then loadAnim(box.Text, isSpeedScaled, false, isHipHeightEnabled, "Manual ID") end
+            if not track and not poseTrack and not activeFullSetConnection then showNotification("Load an animation first.") return end
+        end
+        enabled = not enabled
+        btn.Text = enabled and "Stop" or "Play"
+        if enabled then 
+            tallEnabled = false btnTall.Text = "Tall: OFF"
+            shortEnabled = false btnShort.Text = "Short: OFF"
+            startAnimLoop()
+            showNotification("Animation Started")
+        else
+            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
+            if poseTrack then pcall(function() poseTrack:Stop(0.1) poseTrack:Destroy() end) poseTrack = nil end
+            
+            if activeFullSetConnection then
+                activeFullSetConnection:Disconnect()
+                activeFullSetConnection = nil
+            end
+            for _, trk in pairs(activeFullSetTracks) do
+                pcall(function() trk:Stop(0.1) trk:Destroy() end)
+            end
+            activeFullSetTracks = {}
+
+            if animator then
+                for _, animTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+                    pcall(function() animTrack:Stop(0.1) end)
+                end
+            end
+
+            if eventConn then eventConn:Disconnect(); eventConn = nil end
+            applyHipHeight(false)
+            box.Text = ""
+            showNotification("All Animations Stopped")
+        end
+    end)
+
+    btnToggleSaves.MouseButton1Click:Connect(function()
+        local isOpen = not savesFrame.Visible
+        btnToggleSaves.Text = "Custom Saves: " .. (isOpen and "ON" or "OFF")
+        local targetPos = UDim2.new(1, -20, 0.5, -90)
+
+        if isOpen then
+            savesFrame.Visible = true
+            savesFrame.Position = UDim2.new(1, -20, 0, -380)
+            savesFrame.Rotation = 180
+            
+            pcall(function()
+                local s = Instance.new("Sound")
+                s.SoundId = "rbxassetid://87437544236708"
+                s.Volume = 1
+                s.Parent = SoundService
+                s:Play()
+                s.Ended:Connect(function() s:Destroy() end)
+            end)
+            
+            TweenService:Create(savesFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                Position = targetPos,
+                Rotation = 0
+            }):Play()
+        else
+            local tween = TweenService:Create(savesFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = UDim2.new(1, -20, 0, -380),
+                Rotation = 0
+            })
+            tween:Play()
+            tween.Completed:Connect(function()
+                if not savesFrame.Visible then return end
+                if savesFrame.Position.Y.Offset < 0 then
+                    savesFrame.Visible = false
+                    savesFrame.Position = targetPos
+                end
+            end)
+        end
+    end)
+
+    box.FocusLost:Connect(function() 
+        if activeFullSetConnection then activeFullSetConnection:Disconnect() activeFullSetConnection = nil end
+        tallEnabled = false btnTall.Text = "Tall: OFF"
+        shortEnabled = false btnShort.Text = "Short: OFF"
+        loadAnim(box.Text, isSpeedScaled, false, false, "Manual ID") 
+    end)
+
+    plr.CharacterAdded:Connect(function(char)
+        if globalLoopConn then globalLoopConn:Disconnect(); globalLoopConn = nil end
+        if activeFullSetConnection then activeFullSetConnection:Disconnect(); activeFullSetConnection = nil end
+        if ragdollConnection then ragdollConnection:Disconnect(); ragdollConnection = nil end
+        enabled = false box.Text = "" savesFrame.Visible = false optionsModalFrame.Visible = false popupOverlay.Visible = false fullPopupOverlay.Visible = false
+        task.wait(0.5) 
+        bind(char)
+    end)
+
+    if plr.Character then bind(plr.Character) end
+    updateUiThemeAndScale()
 end
 
--- ==========================================
--- Input & Loop
--- ==========================================
-UIS.InputBegan:Connect(function(input, gameProcessed)
-    if not gameProcessed and input.KeyCode == CycleKeybind then 
-        CycleEvent()
-    end
-end)
-
-
-local COMBAT_TICK = 0 -- Run every frame
-local UTILITY_TICK = 0.05 -- Run 20 times per second
-local TARGET_TICK = 0.5 -- Run 2 times per second
-local LastCycleCheck = 0 
-
-local function MainLoop()
-    local now = os.clock()
-    local localChar = LocalPlayer.Character
-
-   
-    ParryTask()
-    EvaluateParryTriggers()
-    
-    scheduler.update()
-
-    if (now - lastAnimationCheck >= COMBAT_TICK) then
-        lastAnimationCheck = now
-        if #TargetCharacters >= 1 then
-            ProcessEspAndLogging()
-        end
-        
-        if localChar and localChar:FindFirstChild("Humanoid") then
-            LocalTracker:Update(localChar)
-        end
-    end
-
-    if (now - LastCycleCheck >= TARGET_TICK) then
-        LastCycleCheck = now
-        if AutoTargetNearest.Get() then
-            CycleEvent()
-        end
-    end
-end
-
-RunService.Heartbeat:Connect(MainLoop)
+initializeUI()

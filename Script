@@ -163,22 +163,289 @@ end
 
 loadSavesFromFile()
 
+local function showNotification(message)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "AnimOverride",
+            Text = message,
+            Duration = 2.5
+        })
+    end)
+end
+
+local function playClickSound()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://119354387183704"
+        s.Volume = 1
+        s.Parent = SoundService
+        s:Play()
+        s.Ended:Connect(function() s:Destroy() end)
+    end)
+end
+
+local function addProfessionalStroke(parent, color, thickness)
+    local stroke = Instance.new("UIStroke", parent)
+    stroke.Color = color or Color3.fromRGB(80, 80, 100)
+    stroke.Transparency = 0.6
+    stroke.Thickness = thickness or 1.2
+    return stroke
+end
+
+local function addHoverAnimation(btnObj)
+    btnObj.AutoButtonColor = false
+    local uiScale = Instance.new("UIScale", btnObj)
+    uiScale.Scale = 1
+
+    btnObj.MouseEnter:Connect(function()
+        pcall(function()
+            local s = Instance.new("Sound")
+            s.SoundId = "rbxassetid://136108770017536"
+            s.Volume = 1
+            s.Parent = SoundService
+            s:Play()
+            s.Ended:Connect(function() s:Destroy() end)
+        end)
+
+        TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+            Scale = 1.06
+        }):Play()
+    end)
+
+    btnObj.MouseLeave:Connect(function()
+        TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Scale = 1.0
+        }):Play()
+    end)
+
+    if btnObj:IsA("TextButton") then
+        btnObj.MouseButton1Click:Connect(playClickSound)
+    end
+end
+
+local function makeDraggable(frame)
+    local dragging = false
+    local dragStart
+    local startPos
+
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        if UserInputService:GetFocusedTextBox() then return end
+
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end)
+end
+
+local stopFullCustomSet -- Forward declaration
+
+local function applyHipHeight(enableExtra)
+    if not humanoid then return end
+    if enableExtra and not isExtraHipHeightActive then
+        originalHipHeight = humanoid.HipHeight
+        humanoid.HipHeight = originalHipHeight + 0.2
+        isExtraHipHeightActive = true
+    elseif not enableExtra and isExtraHipHeightActive then
+        humanoid.HipHeight = originalHipHeight
+        isExtraHipHeightActive = false
+    end
+end
+
+stopFullCustomSet = function()
+    if activeFullSetConnection then
+        activeFullSetConnection:Disconnect()
+        activeFullSetConnection = nil
+    end
+    for _, trk in pairs(activeFullSetTracks) do
+        pcall(function() trk:Stop(0.1) trk:Destroy() end)
+    end
+    activeFullSetTracks = {}
+    applyHipHeight(false)
+end
+
+local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, displayName)
+    if not animator then showNotification("Error: No Animator found.") return false end
+    stopFullCustomSet()
+    local id = idStr:match("%d+") 
+    if not id then showNotification("Error: Invalid animation ID.") return false end
+    
+    applyHipHeight(hipHeightEnabled == true)
+    local animLabel = displayName or id
+
+    if isPose then
+        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+        
+        local a = Instance.new("Animation")
+        a.AnimationId = "rbxassetid://" .. id
+        local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+        a:Destroy()
+        if not ok or not newTrack then showNotification("Engine failed to load pose.") return false end
+        poseTrack = newTrack
+        poseTrack.Priority = HIGH
+        poseTrack.Looped = true
+        activeAnimConfig.isPose = true
+        
+        pcall(function() poseTrack:Play(0.1, 1, 1) end)
+        showNotification("Playing Pose: " .. animLabel)
+        return true
+    else
+        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        
+        local a = Instance.new("Animation")
+        a.AnimationId = "rbxassetid://" .. id
+        local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
+        a:Destroy()
+        if not ok or not newTrack then showNotification("Engine failed to load override.") return false end
+        
+        track = newTrack
+        track.Priority = HIGH
+        track.Looped = true
+        
+        activeAnimConfig.speedScaled = (speedScaled == true)
+        activeAnimConfig.isPose = false
+        showNotification("Loaded Override: " .. animLabel)
+        return true
+    end
+end
+
+local function loadFullCustomSet(saveDataEntry)
+    if not animator then showNotification("Error: No Animator found.") return end
+    stopFullCustomSet()
+    if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+    if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+
+    applyHipHeight(saveDataEntry.hipHeightEnabled == true)
+
+    activeFullSetTracks = {}
+    local function loadSubTrack(idStr, looped)
+        local cleanId = idStr and idStr:match("%d+")
+        if not cleanId then return nil end
+        local a = Instance.new("Animation")
+        a.AnimationId = "rbxassetid://" .. cleanId
+        local ok, t = pcall(function() return animator:LoadAnimation(a) end)
+        a:Destroy()
+        if ok and t then
+            t.Priority = HIGH
+            t.Looped = (looped ~= false)
+            return t
+        end
+        return nil
+    end
+
+    activeFullSetTracks.idle = loadSubTrack(saveDataEntry.idleId, true)
+    activeFullSetTracks.idle2 = loadSubTrack(saveDataEntry.idle2Id, true)
+    activeFullSetTracks.walk = loadSubTrack(saveDataEntry.walkId, true)
+    activeFullSetTracks.run = loadSubTrack(saveDataEntry.runId, true)
+    activeFullSetTracks.jump = loadSubTrack(saveDataEntry.jumpId, false)
+    activeFullSetTracks.fall = loadSubTrack(saveDataEntry.fallId, true)
+    activeFullSetTracks.swim = loadSubTrack(saveDataEntry.swimId, true)
+    activeFullSetTracks.swimIdle = loadSubTrack(saveDataEntry.swimIdleId, true)
+    activeFullSetTracks.climb = loadSubTrack(saveDataEntry.climbId, true)
+
+    local currentPlayingState = nil
+    local idleAltTimer = 0
+
+    activeFullSetConnection = RunService.RenderStepped:Connect(function(dt)
+        if not humanoid or not humanoid.Parent then return end
+        local vel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+        local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        local state = humanoid:GetState()
+
+        local targetTrack = activeFullSetTracks.idle
+        local stateName = "idle"
+
+        if state == Enum.HumanoidStateType.Swimming then
+            if groundSpeed <= 0.3 and activeFullSetTracks.swimIdle then
+                targetTrack = activeFullSetTracks.swimIdle
+                stateName = "swimIdle"
+            else
+                targetTrack = activeFullSetTracks.swim or activeFullSetTracks.idle
+                stateName = "swim"
+            end
+        elseif state == Enum.HumanoidStateType.Climbing then
+            targetTrack = activeFullSetTracks.climb or activeFullSetTracks.idle
+            stateName = "climb"
+        elseif state == Enum.HumanoidStateType.Jumping then
+            targetTrack = activeFullSetTracks.jump or activeFullSetTracks.fall or activeFullSetTracks.idle
+            stateName = "jump"
+        elseif state == Enum.HumanoidStateType.Freefall then
+            targetTrack = activeFullSetTracks.fall or activeFullSetTracks.jump or activeFullSetTracks.idle
+            stateName = "fall"
+        elseif groundSpeed > 0.3 then
+            if groundSpeed > 19 and activeFullSetTracks.run then
+                targetTrack = activeFullSetTracks.run
+                stateName = "run"
+            else
+                targetTrack = activeFullSetTracks.walk or activeFullSetTracks.idle
+                stateName = "walk"
+            end
+            idleAltTimer = 0
+        else
+            if activeFullSetTracks.idle2 then
+                idleAltTimer = idleAltTimer + dt
+                if idleAltTimer > 7 then
+                    targetTrack = activeFullSetTracks.idle2
+                    stateName = "idle2"
+                    if idleAltTimer > 14 then idleAltTimer = 0 end
+                end
+            end
+        end
+
+        if currentPlayingState ~= stateName then
+            for _, trk in pairs(activeFullSetTracks) do
+                if trk and trk.IsPlaying then
+                    trk:Stop(0.15)
+                end
+            end
+            currentPlayingState = stateName
+            if targetTrack then
+                targetTrack:Play(0.15)
+            end
+        end
+
+        if targetTrack and not targetTrack.IsPlaying then
+            targetTrack:Play(0.15)
+        end
+    end)
+
+    showNotification("Loaded Full Set: " .. saveDataEntry.name)
+end
+
 local function initializeUI()
     local gui = Instance.new("ScreenGui")
     gui.Name = "AnimOverride"
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true
     gui.Parent = plr:WaitForChild("PlayerGui")
-
-    local function showNotification(message)
-        pcall(function()
-            StarterGui:SetCore("SendNotification", {
-                Title = "AnimOverride",
-                Text = message,
-                Duration = 2.5
-            })
-        end)
-    end
 
     local introOverlay = Instance.new("Frame", gui)
     introOverlay.Size = UDim2.fromScale(1, 1)
@@ -251,14 +518,6 @@ local function initializeUI()
     killModalFrame.BorderSizePixel = 0
     killModalFrame.ZIndex = 301
 
-    local function addProfessionalStroke(parent, color, thickness)
-        local stroke = Instance.new("UIStroke", parent)
-        stroke.Color = color or Color3.fromRGB(80, 80, 100)
-        stroke.Transparency = 0.6
-        stroke.Thickness = thickness or 1.2
-        return stroke
-    end
-
     local killCorner = Instance.new("UICorner", killModalFrame)
     killCorner.CornerRadius = UDim.new(0, 8)
     addProfessionalStroke(killModalFrame)
@@ -285,48 +544,6 @@ local function initializeUI()
     killMsg.TextWrapped = true
     killMsg.Text = "You will need to execute it again\nare you sure?"
     killMsg.ZIndex = 302
-
-    local function playClickSound()
-        pcall(function()
-            local s = Instance.new("Sound")
-            s.SoundId = "rbxassetid://119354387183704"
-            s.Volume = 1
-            s.Parent = SoundService
-            s:Play()
-            s.Ended:Connect(function() s:Destroy() end)
-        end)
-    end
-
-    local function addHoverAnimation(btnObj)
-        btnObj.AutoButtonColor = false
-        local uiScale = Instance.new("UIScale", btnObj)
-        uiScale.Scale = 1
-
-        btnObj.MouseEnter:Connect(function()
-            pcall(function()
-                local s = Instance.new("Sound")
-                s.SoundId = "rbxassetid://136108770017536"
-                s.Volume = 1
-                s.Parent = SoundService
-                s:Play()
-                s.Ended:Connect(function() s:Destroy() end)
-            end)
-
-            TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-                Scale = 1.06
-            }):Play()
-        end)
-
-        btnObj.MouseLeave:Connect(function()
-            TweenService:Create(uiScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-                Scale = 1.0
-            }):Play()
-        end)
-
-        if btnObj:IsA("TextButton") then
-            btnObj.MouseButton1Click:Connect(playClickSound)
-        end
-    end
 
     local killConfirmBtn = Instance.new("TextButton", killModalFrame)
     killConfirmBtn.Size = UDim2.fromOffset(135, 32)
@@ -423,8 +640,6 @@ local function initializeUI()
             killModalFrame.Rotation = 0
         end)
     end)
-
-    local stopFullCustomSet -- Forward declaration for cleanup function
 
     killConfirmBtn.MouseButton1Click:Connect(function()
         pcall(function()
@@ -702,47 +917,6 @@ local function initializeUI()
         end
     end)
 
-    local function makeDraggable(frame)
-        local dragging = false
-        local dragStart
-        local startPos
-
-        frame.InputBegan:Connect(function(input)
-            if input.UserInputType ~= Enum.UserInputType.MouseButton1
-                and input.UserInputType ~= Enum.UserInputType.Touch then
-                return
-            end
-
-            if UserInputService:GetFocusedTextBox() then return end
-
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end)
-
-        UserInputService.InputChanged:Connect(function(input)
-            if not dragging then return end
-            if input.UserInputType ~= Enum.UserInputType.MouseMovement
-                and input.UserInputType ~= Enum.UserInputType.Touch then
-                return
-            end
-
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end)
-    end
-
     makeDraggable(mainFrame)
     makeDraggable(savesFrame)
     makeDraggable(limitModalFrame)
@@ -787,74 +961,6 @@ local function initializeUI()
     limitModalCorner.CornerRadius = UDim.new(0, 8)
     addProfessionalStroke(limitModalFrame)
 
-    local bigSliderOverlay = Instance.new("Frame", gui)
-    bigSliderOverlay.Size = UDim2.fromScale(1, 1)
-    bigSliderOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
-    bigSliderOverlay.BackgroundTransparency = 1
-    bigSliderOverlay.Visible = false
-    bigSliderOverlay.ZIndex = 200
-
-    local bigSliderContainer = Instance.new("Frame", bigSliderOverlay)
-    bigSliderContainer.Size = UDim2.new(0.8, 0, 0, 100)
-    bigSliderContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-    bigSliderContainer.Position = UDim2.fromScale(0.5, 0.5)
-    bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
-    bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
-    bigSliderContainer.BorderSizePixel = 0
-    bigSliderContainer.ZIndex = 201
-    local bscCorner = Instance.new("UICorner", bigSliderContainer)
-    bscCorner.CornerRadius = UDim.new(0, 8)
-    addProfessionalStroke(bigSliderContainer)
-
-    local bigSliderTitle = Instance.new("TextLabel", bigSliderContainer)
-    bigSliderTitle.Size = UDim2.new(1, -40, 0, 30)
-    bigSliderTitle.Position = UDim2.fromOffset(20, 15)
-    bigSliderTitle.BackgroundTransparency = 1
-    bigSliderTitle.TextColor3 = customUiConfig.textColor
-    bigSliderTitle.Font = Enum.Font.GothamBold
-    bigSliderTitle.TextSize = 18
-    bigSliderTitle.TextXAlignment = Enum.TextXAlignment.Left
-    bigSliderTitle.ZIndex = 202
-    bigSliderTitle.Text = "Slider Name"
-
-    local bigSliderBar = Instance.new("Frame", bigSliderContainer)
-    bigSliderBar.Size = UDim2.new(1, -40, 0, 16)
-    bigSliderBar.Position = UDim2.new(0, 20, 0, 60)
-    bigSliderBar.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-    bigSliderBar.BorderSizePixel = 0
-    bigSliderBar.ZIndex = 202
-    local bsBarCorner = Instance.new("UICorner", bigSliderBar)
-    bsBarCorner.CornerRadius = UDim.new(1, 0)
-    addProfessionalStroke(bigSliderBar)
-
-    local bigSliderFill = Instance.new("Frame", bigSliderBar)
-    bigSliderFill.Size = UDim2.new(0, 0, 1, 0)
-    bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
-    bigSliderFill.BorderSizePixel = 0
-    bigSliderFill.ZIndex = 203
-    local bsFillCorner = Instance.new("UICorner", bigSliderFill)
-    bsFillCorner.CornerRadius = UDim.new(1, 0)
-
-    local bigSliderButton = Instance.new("TextButton", bigSliderBar)
-    bigSliderButton.Size = UDim2.fromScale(1, 1)
-    bigSliderButton.BackgroundTransparency = 1
-    bigSliderButton.Text = ""
-    bigSliderButton.ZIndex = 204
-
-    local cursorSpeedLabel = Instance.new("TextLabel", bigSliderOverlay)
-    cursorSpeedLabel.Size = UDim2.fromOffset(100, 24)
-    cursorSpeedLabel.BackgroundTransparency = 0.3
-    cursorSpeedLabel.BackgroundColor3 = customUiConfig.textBgColor
-    cursorSpeedLabel.TextColor3 = customUiConfig.textColor
-    cursorSpeedLabel.Font = Enum.Font.GothamBold
-    cursorSpeedLabel.TextSize = 13
-    cursorSpeedLabel.Text = "0.0"
-    cursorSpeedLabel.Visible = false
-    cursorSpeedLabel.ZIndex = 210
-    local cslCorner = Instance.new("UICorner", cursorSpeedLabel)
-    cslCorner.CornerRadius = UDim.new(0, 4)
-    addProfessionalStroke(cursorSpeedLabel)
-
     local modalCorner = Instance.new("UICorner", modalFrame)
     modalCorner.CornerRadius = UDim.new(0, 8)
     addProfessionalStroke(modalFrame)
@@ -870,7 +976,6 @@ local function initializeUI()
     local managedTextObjects = {}
     local managedInteractiveButtons = {}
     local managedSliders = {}
-    local managedTextBgObjects = {}
     local protectedColorCustomizerButtons = {}
 
     local function protectColorCustomizerButton(button)
@@ -1052,8 +1157,6 @@ local function initializeUI()
         deleteModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
         limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
         limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-        bigSliderContainer.BackgroundColor3 = customUiConfig.bgColor
-        bigSliderContainer.BackgroundTransparency = customUiConfig.bgTransparency
 
         mainFrame.Size = UDim2.fromOffset(250, customUiConfig.height)
 
@@ -1076,9 +1179,6 @@ local function initializeUI()
             if s and s.Parent then
                 s.BackgroundColor3 = customUiConfig.sliderColor
             end
-        end
-        if bigSliderFill then
-            bigSliderFill.BackgroundColor3 = customUiConfig.sliderColor
         end
     end
 
@@ -1239,7 +1339,6 @@ local function initializeUI()
         protectColorCustomizerButton(tBtn)
         addHoverAnimation(tBtn)
         table.insert(managedTextObjects, tBtn)
-        table.insert(managedTextBgObjects, tBtn)
 
         local c = Instance.new("UICorner", tBtn)
         c.CornerRadius = UDim.new(0, 6)
@@ -1392,7 +1491,6 @@ local function initializeUI()
     uiSlotNameBox.ZIndex = 56
     protectColorCustomizerButton(uiSlotNameBox)
     table.insert(managedTextObjects, uiSlotNameBox)
-    table.insert(managedTextBgObjects, uiSlotNameBox)
     local usnbCorner = Instance.new("UICorner", uiSlotNameBox)
     usnbCorner.CornerRadius = UDim.new(0, 6)
     addProfessionalStroke(uiSlotNameBox)
@@ -1449,7 +1547,7 @@ local function initializeUI()
             protectColorCustomizerButton(slotBtn)
             addHoverAnimation(slotBtn)
             table.insert(managedTextObjects, slotBtn)
-            table.insert(managedTextBgObjects, slotBtn)
+            table.insert(managedInteractiveButtons, slotBtn)
 
             local sc = Instance.new("UICorner", slotBtn)
             sc.CornerRadius = UDim.new(0, 6)
@@ -2213,277 +2311,6 @@ local function initializeUI()
     end)
 
     local globalLoopConn, eventConn, enabled = nil, nil, false
-
-    local function applyHipHeight(enableExtra)
-        if not humanoid then return end
-        if enableExtra and not isExtraHipHeightActive then
-            originalHipHeight = humanoid.HipHeight
-            humanoid.HipHeight = originalHipHeight + 0.2
-            isExtraHipHeightActive = true
-        elseif not enableExtra and isExtraHipHeightActive then
-            humanoid.HipHeight = originalHipHeight
-            isExtraHipHeightActive = false
-        end
-    end
-
-    stopFullCustomSet = function()
-        if activeFullSetConnection then
-            activeFullSetConnection:Disconnect()
-            activeFullSetConnection = nil
-        end
-        for _, trk in pairs(activeFullSetTracks) do
-            pcall(function() trk:Stop(0.1) trk:Destroy() end)
-        end
-        activeFullSetTracks = {}
-        applyHipHeight(false)
-    end
-
-    local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, displayName)
-        if not animator then showNotification("Error: No Animator found.") return false end
-        stopFullCustomSet()
-        local id = idStr:match("%d+") 
-        if not id then showNotification("Error: Invalid animation ID.") return false end
-        
-        applyHipHeight(hipHeightEnabled == true)
-        local animLabel = displayName or id
-
-        if isPose then
-            if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
-            if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
-            
-            local a = Instance.new("Animation")
-            a.AnimationId = "rbxassetid://" .. id
-            local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
-            a:Destroy()
-            if not ok or not newTrack then showNotification("Engine failed to load pose.") return false end
-            poseTrack = newTrack
-            poseTrack.Priority = HIGH
-            poseTrack.Looped = true
-            activeAnimConfig.isPose = true
-            
-            pcall(function() poseTrack:Play(0.1, 1, 1) end)
-            showNotification("Playing Pose: " .. animLabel)
-            return true
-        else
-            if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
-            if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
-            
-            local a = Instance.new("Animation")
-            a.AnimationId = "rbxassetid://" .. id
-            local ok, newTrack = pcall(function() return animator:LoadAnimation(a) end)
-            a:Destroy()
-            if not ok or not newTrack then showNotification("Engine failed to load override.") return false end
-            
-            track = newTrack
-            track.Priority = HIGH
-            track.Looped = true
-            
-            activeAnimConfig.speedScaled = (speedScaled == true)
-            activeAnimConfig.isPose = false
-            showNotification("Loaded Override: " .. animLabel)
-            return true
-        end
-    end
-
-    local function loadFullCustomSet(saveDataEntry)
-        if not animator then showNotification("Error: No Animator found.") return end
-        stopFullCustomSet()
-        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
-        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
-
-        applyHipHeight(saveDataEntry.hipHeightEnabled == true)
-
-        activeFullSetTracks = {}
-        local function loadSubTrack(idStr, looped)
-            local cleanId = idStr and idStr:match("%d+")
-            if not cleanId then return nil end
-            local a = Instance.new("Animation")
-            a.AnimationId = "rbxassetid://" .. cleanId
-            local ok, t = pcall(function() return animator:LoadAnimation(a) end)
-            a:Destroy()
-            if ok and t then
-                t.Priority = HIGH
-                t.Looped = (looped ~= false)
-                return t
-            end
-            return nil
-        end
-
-        activeFullSetTracks.idle = loadSubTrack(saveDataEntry.idleId, true)
-        activeFullSetTracks.idle2 = loadSubTrack(saveDataEntry.idle2Id, true)
-        activeFullSetTracks.walk = loadSubTrack(saveDataEntry.walkId, true)
-        activeFullSetTracks.run = loadSubTrack(saveDataEntry.runId, true)
-        activeFullSetTracks.jump = loadSubTrack(saveDataEntry.jumpId, false)
-        activeFullSetTracks.fall = loadSubTrack(saveDataEntry.fallId, true)
-        activeFullSetTracks.swim = loadSubTrack(saveDataEntry.swimId, true)
-        activeFullSetTracks.swimIdle = loadSubTrack(saveDataEntry.swimIdleId, true)
-        activeFullSetTracks.climb = loadSubTrack(saveDataEntry.climbId, true)
-
-        local currentPlayingState = nil
-        local idleAltTimer = 0
-
-        activeFullSetConnection = RunService.RenderStepped:Connect(function(dt)
-            if not humanoid or not humanoid.Parent then return end
-            local vel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
-            local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-            local state = humanoid:GetState()
-
-            local targetTrack = activeFullSetTracks.idle
-            local stateName = "idle"
-
-            if state == Enum.HumanoidStateType.Swimming then
-                if groundSpeed <= 0.3 and activeFullSetTracks.swimIdle then
-                    targetTrack = activeFullSetTracks.swimIdle
-                    stateName = "swimIdle"
-                else
-                    targetTrack = activeFullSetTracks.swim or activeFullSetTracks.idle
-                    stateName = "swim"
-                end
-            elseif state == Enum.HumanoidStateType.Climbing then
-                targetTrack = activeFullSetTracks.climb or activeFullSetTracks.idle
-                stateName = "climb"
-            elseif state == Enum.HumanoidStateType.Jumping then
-                targetTrack = activeFullSetTracks.jump or activeFullSetTracks.fall or activeFullSetTracks.idle
-                stateName = "jump"
-            elseif state == Enum.HumanoidStateType.Freefall then
-                targetTrack = activeFullSetTracks.fall or activeFullSetTracks.jump or activeFullSetTracks.idle
-                stateName = "fall"
-            elseif groundSpeed > 0.3 then
-                if groundSpeed > 19 and activeFullSetTracks.run then
-                    targetTrack = activeFullSetTracks.run
-                    stateName = "run"
-                else
-                    targetTrack = activeFullSetTracks.walk or activeFullSetTracks.idle
-                    stateName = "walk"
-                end
-                idleAltTimer = 0
-            else
-                if activeFullSetTracks.idle2 then
-                    idleAltTimer = idleAltTimer + dt
-                    if idleAltTimer > 7 then
-                        targetTrack = activeFullSetTracks.idle2
-                        stateName = "idle2"
-                        if idleAltTimer > 14 then idleAltTimer = 0 end
-                    end
-                end
-            end
-
-            if currentPlayingState ~= stateName then
-                for _, trk in pairs(activeFullSetTracks) do
-                    if trk and trk.IsPlaying then
-                        trk:Stop(0.15)
-                    end
-                end
-                currentPlayingState = stateName
-                if targetTrack then
-                    targetTrack:Play(0.15)
-                end
-            end
-
-            if targetTrack and not targetTrack.IsPlaying then
-                targetTrack:Play(0.15)
-            end
-        end)
-
-        showNotification("Loaded Full Set: " .. saveDataEntry.name)
-    end
-
-    btnTall.MouseButton1Click:Connect(function()
-        tallEnabled = not tallEnabled
-        btnTall.Text = "Tall: " .. (tallEnabled and "ON" or "OFF")
-        stopFullCustomSet()
-        if tallEnabled then
-            shortEnabled = false
-            btnShort.Text = "Short: OFF"
-            loadAnim("92807081069528", true, false, false, "Tall")
-            enabled = true
-            btn.Text = "Stop"
-            showNotification("Tall Anim: ON")
-        else
-            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
-            enabled = false
-            btn.Text = "Play"
-            applyHipHeight(false)
-            showNotification("Tall Anim: OFF")
-        end
-    end)
-
-    btnShort.MouseButton1Click:Connect(function()
-        shortEnabled = not shortEnabled
-        btnShort.Text = "Short: " .. (shortEnabled and "ON" or "OFF")
-        stopFullCustomSet()
-        if shortEnabled then
-            tallEnabled = false
-            btnTall.Text = "Tall: OFF"
-            loadAnim("137317695640929", true, false, false, "Short")
-            enabled = true
-            btn.Text = "Stop"
-            showNotification("Short Anim: ON")
-        else
-            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
-            enabled = false
-            btn.Text = "Play"
-            applyHipHeight(false)
-            showNotification("Short Anim: OFF")
-        end
-    end)
-
-    local ragdollConnection = nil
-    local function runRagdollPhysicsStep()
-        if not ragdollEnabled or not rootPart or not rootPart.Parent then 
-            if ragdollConnection then ragdollConnection:Disconnect() end
-            return 
-        end
-
-        local moveDir = humanoid.MoveDirection
-        local speed = currentWalkSpeed
-        local currentVel = rootPart.AssemblyLinearVelocity
-
-        if moveDir.Magnitude > 0 then
-            rootPart.AssemblyLinearVelocity = Vector3.new(moveDir.X * speed, currentVel.Y, moveDir.Z * speed)
-        end
-
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-            if math.abs(currentVel.Y) < 1.0 then
-                rootPart.AssemblyLinearVelocity = Vector3.new(currentVel.X, 50, currentVel.Z)
-            end
-        end
-    end
-
-    local function setRagdoll(state)
-        ragdollEnabled = state
-        btnRagdoll.Text = "Ragdoll: " .. (ragdollEnabled and "ON" or "OFF")
-        if not plr.Character or not humanoid or not rootPart then return end
-        local char = plr.Character
-        
-        if ragdollEnabled then
-            humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-            for _, desc in ipairs(char:GetDescendants()) do
-                if desc:IsA("BasePart") and desc.Name ~= "HumanoidRootPart" then
-                    pcall(function() desc.CustomPhysicalProperties = PhysicalProperties.new(0.6, 0.3, 0.5, 1, 1) end)
-                end
-            end
-            if ragdollConnection then ragdollConnection:Disconnect() end
-            ragdollConnection = RunService.RenderStepped:Connect(runRagdollPhysicsStep)
-            showNotification("Ragdoll Enabled")
-        else
-            if ragdollConnection then ragdollConnection:Disconnect() end
-            for _, desc in ipairs(char:GetDescendants()) do
-                if desc:IsA("BasePart") then pcall(function() desc.CustomPhysicalProperties = nil end) end
-            end
-            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-            task.delay(0.2, function()
-                if enabled then
-                    if tallEnabled then loadAnim("92807081069528", true, false, false, "Tall")
-                    elseif shortEnabled then loadAnim("137317695640929", true, false, false, "Short")
-                    elseif box.Text ~= "" then loadAnim(box.Text, isSpeedScaled, false, isHipHeightEnabled, "Custom") end
-                end
-            end)
-            showNotification("Ragdoll Disabled")
-        end
-    end
-
-    btnRagdoll.MouseButton1Click:Connect(function() setRagdoll(not ragdollEnabled) end)
 
     local function processAnimationLoop(dt)
         if activeFullSetConnection then return end

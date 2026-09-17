@@ -123,7 +123,7 @@ local function loadSavesFromFile()
 
                 local sliderR = decoded.uiConfig.sliderR or 120
                 local sliderG = decoded.uiConfig.sliderG or 180
-                local sliderB = decoded.uiConfig.sliderB or 255
+                local sliderB = decoded.uiConfig.sliderB = decoded.uiConfig.sliderB or 255
                 customUiConfig.sliderColor = Color3.fromRGB(sliderR, sliderG, sliderB)
                 
                 customUiConfig.bgTransparency = decoded.uiConfig.bgTransparency or 0.03
@@ -1062,8 +1062,11 @@ local function initializeUI()
 
     local speedSettingsTriggerBtn, btnToggleSaves, colorTriggerBtn, uiSlotsTriggerBtn, isColorExpanded, isUiSlotsExpanded
 
-    UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == Enum.KeyCode.Equals then
+    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end
+        
+        -- Fixed KeyCode check for Equals (`=`) key
+        if input.KeyCode == Enum.KeyCode.Equals or input.KeyCode == Enum.KeyCode.Semicolon then
             if UserInputService:GetFocusedTextBox() then return end
 
             if isGuiVisible then

@@ -793,7 +793,7 @@ local function initializeUI()
     hipSliderTitle.TextColor3 = customUiConfig.textColor
     hipSliderTitle.Font = Enum.Font.SourceSansBold
     hipSliderTitle.TextSize = 16
-    hipSliderTitle.Text = "Extra hip height (0.1 - 1.0)"
+    hipSliderTitle.Text = "HipHeight Modifier (0.1 - 1.0)"
     hipSliderTitle.ZIndex = 62
 
     local hipSliderValLabel = Instance.new("TextLabel", hipSliderPanelBg)
@@ -803,7 +803,7 @@ local function initializeUI()
     hipSliderValLabel.TextColor3 = customUiConfig.textColor
     hipSliderValLabel.Font = Enum.Font.SourceSansSemibold
     hipSliderValLabel.TextSize = 13
-    hipSliderValLabel.Text = "Current offset: 0.2 studs"
+    hipSliderValLabel.Text = "Distance: 0.2 studs"
     hipSliderValLabel.ZIndex = 62
 
     local hipBar = Instance.new("Frame", hipSliderPanelBg)
@@ -863,7 +863,7 @@ local function initializeUI()
         tempHipOffset = math.clamp(math.round(val * 10) / 10, 0.1, 1.0)
         local ratio = (tempHipOffset - 0.1) / 0.9
         hipFill.Size = UDim2.new(ratio, 0, 1, 0)
-        hipSliderValLabel.Text = string.format("Current offset: %.1f studs", tempHipOffset)
+        hipSliderValLabel.Text = string.format("Distance: %.1f studs", tempHipOffset)
     end
 
     local hipDragging = false
@@ -1025,7 +1025,7 @@ local function initializeUI()
 
                 isHipHeightEnabled = (entry.hipHeightEnabled == true)
                 customHipHeightOffset = entry.hipHeightOffset or 0.2
-                mHipBtn.Text = isHipHeightEnabled and string.format("Extra hip height: ON (%.1f)", customHipHeightOffset) or "Extra hip height: OFF"
+                mHipBtn.Text = isHipHeightEnabled and string.format("HipHeight: ON (%.1f)", customHipHeightOffset) or "HipHeight"
 
                 if isOverrideMode then
                     mSpeedBtn.Visible = true
@@ -2443,7 +2443,7 @@ local function initializeUI()
     isSpeedScaled = true
     mSpeedBtn = mkModal(modalFrame, "TextButton", 20, 170, 260, 30, "Speed scaled: ON")
     local isHipHeightEnabled = false
-    mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "Extra hip height: OFF")
+    mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "HipHeight")
 
     mHipBtn.MouseButton1Click:Connect(function()
         hipSliderOverlay.Visible = true
@@ -2458,7 +2458,7 @@ local function initializeUI()
     hipConfirmBtn.MouseButton1Click:Connect(function()
         customHipHeightOffset = tempHipOffset
         isHipHeightEnabled = true
-        mHipBtn.Text = string.format("Extra hip height: ON (%.1f)", customHipHeightOffset)
+        mHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
         TweenService:Create(hipSliderOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
         local t = TweenService:Create(hipSliderFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
         t:Play()
@@ -2533,7 +2533,7 @@ local function initializeUI()
     fClimbBox.ClearTextOnFocus = false
 
     local isFullHipHeightEnabled = false
-    local fHipBtn = mkModal(fullModalFrame, "TextButton", 20, 390, 300, 28, "Extra hip height: OFF")
+    local fHipBtn = mkModal(fullModalFrame, "TextButton", 20, 390, 300, 28, "HipHeight")
 
     fHipBtn.MouseButton1Click:Connect(function()
         hipSliderOverlay.Visible = true
@@ -2547,7 +2547,7 @@ local function initializeUI()
         hipConfirmBtn.MouseButton1Click:Connect(function()
             customHipHeightOffset = tempHipOffset
             isFullHipHeightEnabled = true
-            fHipBtn.Text = string.format("Extra hip height: ON (%.1f)", customHipHeightOffset)
+            fHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
             TweenService:Create(hipSliderOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
             local t = TweenService:Create(hipSliderFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
             t:Play()
@@ -2839,7 +2839,7 @@ local function initializeUI()
         else
             fNameBox.Text = "" fIdleBox.Text = "" fIdle2Box.Text = "" fWalkBox.Text = "" fRunBox.Text = "" fJumpBox.Text = "" fFallBox.Text = "" fSwimBox.Text = "" fSwimIdleBox.Text = "" fClimbBox.Text = ""
             isFullHipHeightEnabled = false
-            fHipBtn.Text = "Extra hip height: OFF"
+            fHipBtn.Text = "HipHeight"
             fullPopupOverlay.Visible = true
             fullModalFrame.Size = UDim2.fromOffset(0, 0)
             fullModalFrame.Rotation = -8

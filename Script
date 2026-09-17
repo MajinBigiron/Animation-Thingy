@@ -11,9 +11,15 @@ local plr = Players.LocalPlayer
 local cam = workspace.CurrentCamera
 local HIGH = Enum.AnimationPriority.Action4
 
-local MIN_ANIM_SPEED = 0.001 
-local MAX_ANIM_SPEED = 5.0 
+local BASE_WALK_SPEED = 16
+local ROBLOX_RUN_DIVISOR = 14.5 
+local ROBLOX_SWIM_DIVISOR = 10.0 
+
+local LENIENT_SPEED_POWER = 0.65 
 local STATIONARY_REST_TIME = 0.5 
+
+-- The duration in seconds it takes to smoothly blend between two animations
+local CROSSFADE_TIME = 0.25
 
 local originalWalkSpeed = 16
 local currentWalkSpeed = 16
@@ -23,6 +29,11 @@ local maxWalkSpeedLimit = 100
 local minWalkSpeedLimit = 1
 local maxAnimSpeedLimit = 5.0
 local minAnimSpeedLimit = 0.1
+
+local limitModalOverlay = nil
+local limitModalFrame = nil
+local activeHipHeightTarget = nil
+local isFullHipHeightEnabled = false
 
 local customUiConfig = {
     height = 360,
@@ -72,12 +83,194 @@ local customHipHeightOffset = 0.2
 local isExtraHipHeightActive = false
 local activeFullSetConnection = nil
 local activeFullSetTracks = {}
+local ragdollConnection = nil
+
+local function fadeAndDestroyTrack(trk)
+    if trk then
+        pcall(function()
+            -- Tell the track to fade out smoothly over CROSSFADE_TIME
+            trk:Stop(CROSSFADE_TIME)
+            -- Wait for the fade out to finish before wiping it from memory
+            task.delay(CROSSFADE_TIME, function()
+                pcall(function() trk:Destroy() end)
+            end)
+        end)
+    end
+end
+
+local function getDirectionMultiplier()
+    if not rootPart or not humanoid then return 1 end
+    
+    local state = humanoid:GetState()
+    if state ~= Enum.HumanoidStateType.Running and state ~= Enum.HumanoidStateType.RunningNoPhysics and state ~= Enum.HumanoidStateType.Swimming then
+        return 1
+    end
+
+    local velocity = rootPart.AssemblyLinearVelocity
+    if Vector3.new(velocity.X, 0, velocity.Z).Magnitude > 0.5 then
+        local relativeVel = rootPart.CFrame:VectorToObjectSpace(velocity)
+        if relativeVel.Z > 0.1 then 
+            return -1 
+        end
+    end
+    
+    return 1
+end
+
+local function getWalkSpeedScale()
+    if not humanoid or not rootPart then return 1 end
+
+    local state = humanoid:GetState()
+    
+    if state == Enum.HumanoidStateType.Freefall or 
+       state == Enum.HumanoidStateType.Jumping or 
+       state == Enum.HumanoidStateType.GettingUp or
+       state == Enum.HumanoidStateType.Seated then
+        return 1
+    end
+
+    local velocity = rootPart.AssemblyLinearVelocity
+    local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+
+    if groundSpeed > 0.1 then
+        local rawScale = groundSpeed / ROBLOX_RUN_DIVISOR
+        return math.max(0.1, math.pow(rawScale, LENIENT_SPEED_POWER))
+    end
+
+    return 1
+end
 
 local function normaliseLimits()
     minWalkSpeedLimit = math.max(0, tonumber(minWalkSpeedLimit) or 1)
     maxWalkSpeedLimit = math.max(minWalkSpeedLimit, tonumber(maxWalkSpeedLimit) or 100)
-    minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, tonumber(minAnimSpeedLimit) or 0.1)
-    maxAnimSpeedLimit = math.max(minAnimSpeedLimit, tonumber(maxAnimSpeedLimit) or MAX_ANIM_SPEED)
+    
+    minAnimSpeedLimit = tonumber(minAnimSpeedLimit) or 0.1
+    maxAnimSpeedLimit = math.max(minAnimSpeedLimit, tonumber(maxAnimSpeedLimit) or 5.0)
+end
+
+local function getCustomTrackSpeed()
+    local speedMultiplier = currentAnimMultiplier * getDirectionMultiplier()
+    
+    if activeAnimConfig.speedScaled then
+        speedMultiplier *= getWalkSpeedScale()
+    end
+    
+    return speedMultiplier
+end
+
+local function getPoseTrackSpeed()
+    return currentAnimMultiplier
+end
+
+local function adjustTrackSpeed(animationTrack, speed)
+    if not animationTrack then return end
+
+    speed = tonumber(speed)
+    if not speed or speed ~= speed then return end
+
+    if math.abs(animationTrack.Speed - speed) < 0.01 then
+        return
+    end
+
+    pcall(function()
+        animationTrack:AdjustSpeed(speed)
+    end)
+end
+
+local function isFullSetTrack(animationTrack)
+    for _, fullSetTrack in pairs(activeFullSetTracks) do
+        if fullSetTrack == animationTrack then
+            return true
+        end
+    end
+    return false
+end
+
+local function updateFullSetTrackSpeeds()
+    local dirMult = getDirectionMultiplier()
+    
+    for stateKey, animationTrack in pairs(activeFullSetTracks) do
+        if animationTrack then
+            local targetSpeed = currentAnimMultiplier
+            
+            if stateKey == "walk" or stateKey == "run" then
+                targetSpeed = targetSpeed * getWalkSpeedScale() * dirMult
+            elseif stateKey == "swim" then
+                local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+                local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+                local rawScale = groundSpeed / ROBLOX_SWIM_DIVISOR
+                targetSpeed = targetSpeed * math.max(0.1, math.pow(rawScale, LENIENT_SPEED_POWER)) * dirMult
+            end
+            
+            adjustTrackSpeed(animationTrack, targetSpeed)
+        end
+    end
+end
+
+local function applyCurrentAnimationSpeed()
+    if track then
+        adjustTrackSpeed(track, getCustomTrackSpeed())
+    end
+
+    if poseTrack then
+        adjustTrackSpeed(poseTrack, getPoseTrackSpeed())
+    end
+
+    updateFullSetTrackSpeeds()
+end
+
+local ragdollJoints = {}
+local function setRagdoll(active)
+    local char = plr.Character
+    if not char or not humanoid then return end
+
+    if active then
+        ragdollJoints = {}
+        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+        humanoid.AutoRotate = false
+
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("Motor6D") and v.Name ~= "Neck" and v.Parent ~= char.PrimaryPart then
+                local parent = v.Parent
+                local part0 = v.Part0
+                local part1 = v.Part1
+                
+                if part0 and part1 then
+                    local att0 = Instance.new("Attachment")
+                    att0.CFrame = v.C0
+                    att0.Name = "RagdollAtt0"
+                    att0.Parent = part0
+
+                    local att1 = Instance.new("Attachment")
+                    att1.CFrame = v.C1
+                    att1.Name = "RagdollAtt1"
+                    att1.Parent = part1
+
+                    local ballSocket = Instance.new("BallSocketConstraint")
+                    ballSocket.Attachment0 = att0
+                    ballSocket.Attachment1 = att1
+                    ballSocket.Name = "RagdollSocket"
+                    ballSocket.Parent = parent
+
+                    v.Enabled = false
+                    table.insert(ragdollJoints, {motor = v, att0 = att0, att1 = att1, socket = ballSocket})
+                end
+            end
+        end
+    else
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+        humanoid.AutoRotate = true
+
+        for _, jointData in ipairs(ragdollJoints) do
+            pcall(function()
+                if jointData.motor then jointData.motor.Enabled = true end
+                if jointData.att0 then jointData.att0:Destroy() end
+                if jointData.att1 then jointData.att1:Destroy() end
+                if jointData.socket then jointData.socket:Destroy() end
+            end)
+        end
+        ragdollJoints = {}
+    end
 end
 
 local function loadSavesFromFile()
@@ -288,7 +481,7 @@ stopFullCustomSet = function()
         activeFullSetConnection = nil
     end
     for _, trk in pairs(activeFullSetTracks) do
-        pcall(function() trk:Stop(0.1) trk:Destroy() end)
+        fadeAndDestroyTrack(trk)
     end
     activeFullSetTracks = {}
     applyHipHeight(false)
@@ -309,8 +502,8 @@ local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, customOffs
     local animLabel = displayName or id
 
     if isPose then
-        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
-        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+        if track then fadeAndDestroyTrack(track); track = nil end
+        if poseTrack then fadeAndDestroyTrack(poseTrack); poseTrack = nil end
         
         local a = Instance.new("Animation")
         a.AnimationId = "rbxassetid://" .. id
@@ -322,12 +515,13 @@ local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, customOffs
         poseTrack.Looped = true
         activeAnimConfig.isPose = true
         
-        pcall(function() poseTrack:Play(0.1, 1, 1) end)
+        pcall(function() poseTrack:Play(CROSSFADE_TIME, 1, getPoseTrackSpeed()) end)
+        applyCurrentAnimationSpeed()
         showNotification("Playing Pose: " .. animLabel)
         return true
     else
-        if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
-        if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
+        if poseTrack then fadeAndDestroyTrack(poseTrack); poseTrack = nil end
+        if track then fadeAndDestroyTrack(track); track = nil end
         
         local a = Instance.new("Animation")
         a.AnimationId = "rbxassetid://" .. id
@@ -341,16 +535,22 @@ local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, customOffs
         
         activeAnimConfig.speedScaled = (speedScaled == true)
         activeAnimConfig.isPose = false
+        applyCurrentAnimationSpeed()
         showNotification("Loaded Override: " .. animLabel)
         return true
     end
 end
 
 local function loadFullCustomSet(saveDataEntry)
-    if not animator then showNotification("Error: No Animator found.") return end
+    if not animator or not animator.Parent then
+        showNotification("Error: No Animator found.")
+        return false
+    end
+
     stopFullCustomSet()
-    if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
-    if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+
+    if track then fadeAndDestroyTrack(track); track = nil end
+    if poseTrack then fadeAndDestroyTrack(poseTrack); poseTrack = nil end
 
     if saveDataEntry.hipHeightEnabled then
         applyHipHeight(true, saveDataEntry.hipHeightOffset or 0.2)
@@ -359,19 +559,30 @@ local function loadFullCustomSet(saveDataEntry)
     end
 
     activeFullSetTracks = {}
-    local function loadSubTrack(idStr, looped)
-        local cleanId = idStr and idStr:match("%d+")
-        if not cleanId then return nil end
-        local a = Instance.new("Animation")
-        a.AnimationId = "rbxassetid://" .. cleanId
-        local ok, t = pcall(function() return animator:LoadAnimation(a) end)
-        a:Destroy()
-        if ok and t then
-            t.Priority = HIGH
-            t.Looped = (looped ~= false)
-            return t
+
+    local function loadSubTrack(idString, looped)
+        local cleanId = idString and tostring(idString):match("%d+")
+        if not cleanId then
+            return nil
         end
-        return nil
+
+        local animation = Instance.new("Animation")
+        animation.AnimationId = "rbxassetid://" .. cleanId
+
+        local ok, animationTrack = pcall(function()
+            return animator:LoadAnimation(animation)
+        end)
+
+        animation:Destroy()
+
+        if not ok or not animationTrack then
+            return nil
+        end
+
+        animationTrack.Priority = HIGH
+        animationTrack.Looped = looped ~= false
+
+        return animationTrack
     end
 
     activeFullSetTracks.idle = loadSubTrack(saveDataEntry.idleId, true)
@@ -388,9 +599,12 @@ local function loadFullCustomSet(saveDataEntry)
     local idleAltTimer = 0
 
     activeFullSetConnection = RunService.RenderStepped:Connect(function(dt)
-        if not humanoid or not humanoid.Parent then return end
-        local vel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
-        local groundSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        if not humanoid or not humanoid.Parent then
+            return
+        end
+
+        local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+        local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
         local state = humanoid:GetState()
 
         local targetTrack = activeFullSetTracks.idle
@@ -404,56 +618,104 @@ local function loadFullCustomSet(saveDataEntry)
                 targetTrack = activeFullSetTracks.swim or activeFullSetTracks.idle
                 stateName = "swim"
             end
+
         elseif state == Enum.HumanoidStateType.Climbing then
             targetTrack = activeFullSetTracks.climb or activeFullSetTracks.idle
             stateName = "climb"
+
         elseif state == Enum.HumanoidStateType.Jumping then
-            targetTrack = activeFullSetTracks.jump or activeFullSetTracks.fall or activeFullSetTracks.idle
+            targetTrack = activeFullSetTracks.jump
+                or activeFullSetTracks.fall
+                or activeFullSetTracks.idle
             stateName = "jump"
+
         elseif state == Enum.HumanoidStateType.Freefall then
-            targetTrack = activeFullSetTracks.fall or activeFullSetTracks.jump or activeFullSetTracks.idle
+            targetTrack = activeFullSetTracks.fall
+                or activeFullSetTracks.jump
+                or activeFullSetTracks.idle
             stateName = "fall"
+
         elseif groundSpeed > 0.3 then
-            if groundSpeed > 19 and activeFullSetTracks.run then
+            local shouldRun = humanoid.WalkSpeed >= BASE_WALK_SPEED
+
+            if shouldRun and activeFullSetTracks.run then
                 targetTrack = activeFullSetTracks.run
                 stateName = "run"
             else
-                targetTrack = activeFullSetTracks.walk or activeFullSetTracks.idle
+                targetTrack = activeFullSetTracks.walk
+                    or activeFullSetTracks.idle
                 stateName = "walk"
             end
+
             idleAltTimer = 0
+
         else
             if activeFullSetTracks.idle2 then
                 idleAltTimer = idleAltTimer + dt
+
                 if idleAltTimer > 7 then
                     targetTrack = activeFullSetTracks.idle2
                     stateName = "idle2"
-                    if idleAltTimer > 14 then idleAltTimer = 0 end
+
+                    if idleAltTimer > 14 then
+                        idleAltTimer = 0
+                    end
                 end
+            else
+                idleAltTimer = 0
             end
+        end
+
+        if not targetTrack then
+            targetTrack = activeFullSetTracks.walk or activeFullSetTracks.idle
+            stateName = "walk"
         end
 
         if currentPlayingState ~= stateName then
-            for _, trk in pairs(activeFullSetTracks) do
-                if trk and trk.IsPlaying then
-                    trk:Stop(0.15)
+            for _, animationTrack in pairs(activeFullSetTracks) do
+                if animationTrack and animationTrack ~= targetTrack and animationTrack.IsPlaying then
+                    pcall(function()
+                        animationTrack:Stop(CROSSFADE_TIME)
+                    end)
                 end
             end
-            currentPlayingState = stateName
-            if targetTrack then
-                targetTrack:Play(0.15)
-            end
-        end
 
-        if targetTrack and not targetTrack.IsPlaying then
-            targetTrack:Play(0.15)
+            currentPlayingState = stateName
+
+            if targetTrack then
+                pcall(function()
+                    local startSpeed = currentAnimMultiplier
+                    if stateName == "walk" or stateName == "run" then
+                        startSpeed = startSpeed * getWalkSpeedScale() * getDirectionMultiplier()
+                    end
+                    targetTrack:Play(CROSSFADE_TIME, 1, startSpeed)
+                end)
+                updateFullSetTrackSpeeds()
+            end
+        elseif targetTrack then
+            if not targetTrack.IsPlaying then
+                pcall(function()
+                    local startSpeed = currentAnimMultiplier
+                    if stateName == "walk" or stateName == "run" then
+                        startSpeed = startSpeed * getWalkSpeedScale() * getDirectionMultiplier()
+                    end
+                    targetTrack:Play(CROSSFADE_TIME, 1, startSpeed)
+                end)
+                updateFullSetTrackSpeeds()
+            else
+                updateFullSetTrackSpeeds()
+            end
         end
     end)
 
-    showNotification("Loaded Full Set: " .. saveDataEntry.name)
+    showNotification("Loaded Full Set: " .. tostring(saveDataEntry.name))
+    return true
 end
 
 local function initializeUI()
+    local refreshSavesUI
+    local mNameBox, mIdBox, mTypeBtn, mSpeedBtn, mHipBtn, fHipBtn
+
     local gui = Instance.new("ScreenGui")
     gui.Name = "AnimOverride"
     gui.ResetOnSpawn = false
@@ -668,8 +930,8 @@ local function initializeUI()
     killConfirmBtn.MouseButton1Click:Connect(function()
         pcall(function()
             if walkSpeedConn then walkSpeedConn:Disconnect() end
-            if track then track:Stop() end
-            if poseTrack then poseTrack:Stop() end
+            if track then fadeAndDestroyTrack(track); track = nil end
+            if poseTrack then fadeAndDestroyTrack(poseTrack); poseTrack = nil end
             if stopFullCustomSet then stopFullCustomSet() end
         end)
         gui:Destroy()
@@ -971,6 +1233,8 @@ local function initializeUI()
     addHoverAnimation(actDelBtn)
 
     local pendingActionIndex = nil
+    local pendingFullSetEditIndex = nil
+    
     local function openActionModal(index, animName)
         pendingActionIndex = index
         actionMsg.Text = "Choose action for \"" .. animName .. "\""
@@ -993,9 +1257,6 @@ local function initializeUI()
         end)
     end
 
-    local refreshSavesUI
-    local mNameBox, mIdBox, mTypeBtn, mSpeedBtn, mHipBtn
-
     actDelBtn.MouseButton1Click:Connect(function()
         if pendingActionIndex then
             table.remove(saveData.customSaves, pendingActionIndex)
@@ -1006,15 +1267,28 @@ local function initializeUI()
         closeActionModal()
     end)
 
+    local isOverrideMode = true
+    local isSpeedScaled = true
+
     actEditBtn.MouseButton1Click:Connect(function()
         if pendingActionIndex and saveData.customSaves[pendingActionIndex] then
             local entry = saveData.customSaves[pendingActionIndex]
-            table.remove(saveData.customSaves, pendingActionIndex)
             closeActionModal()
 
             if entry.isFullSet then
-                showNotification("Editing full sets not supported via quick edit. Please recreate.")
+                pendingFullSetEditIndex = pendingActionIndex
+                tempHipOffset = entry.hipHeightOffset or 0.2
+                updateHipSlider(tempHipOffset)
+                activeHipHeightTarget = "editFull"
+                
+                hipSliderOverlay.Visible = true
+                hipSliderFrame.Size = UDim2.fromOffset(0, 0)
+                hipSliderFrame.Rotation = -8
+
+                TweenService:Create(hipSliderOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
+                TweenService:Create(hipSliderFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 195), Rotation = 0 }):Play()
             else
+                table.remove(saveData.customSaves, pendingActionIndex)
                 mNameBox.Text = entry.name or ""
                 mIdBox.Text = entry.id or ""
                 isOverrideMode = (entry.isOverride ~= false)
@@ -1023,7 +1297,7 @@ local function initializeUI()
                 isSpeedScaled = (entry.speedScaled ~= false)
                 mSpeedBtn.Text = "Speed scaled: " .. (isSpeedScaled and "ON" or "OFF")
 
-                isHipHeightEnabled = (entry.hipHeightEnabled == true)
+                local isHipHeightEnabled = (entry.hipHeightEnabled == true)
                 customHipHeightOffset = entry.hipHeightOffset or 0.2
                 mHipBtn.Text = isHipHeightEnabled and string.format("HipHeight: ON (%.1f)", customHipHeightOffset) or "HipHeight"
 
@@ -1041,7 +1315,12 @@ local function initializeUI()
                 modalFrame.Size = UDim2.fromOffset(0, 0)
                 modalFrame.Rotation = -8
                 TweenService:Create(popupOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
-                TweenService:Create(modalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, modalFrame.AbsoluteSize.Y), Rotation = 0 }):Play()
+                
+                local editModalHeight = isOverrideMode and 330 or 260
+                TweenService:Create(modalFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                    Size = UDim2.fromOffset(300, editModalHeight),
+                    Rotation = 0
+                }):Play()
             end
         end
     end)
@@ -1080,7 +1359,7 @@ local function initializeUI()
                 lastOpenState.wasHipSliderOpen = hipSliderOverlay.Visible
                 lastOpenState.wasLimitOpen = limitModalOverlay.Visible
 
-                if limitModalOverlay.Visible then limitModalOverlay.Visible = false end
+                if limitModalOverlay and limitModalOverlay.Visible then limitModalOverlay.Visible = false end
                 if actionModalOverlay.Visible then actionModalOverlay.Visible = false end
                 if hipSliderOverlay.Visible then hipSliderOverlay.Visible = false end
                 if popupOverlay.Visible then popupOverlay.Visible = false end
@@ -1199,7 +1478,7 @@ local function initializeUI()
                 if lastOpenState.wasFullAnimOpen then fullPopupOverlay.Visible = true end
                 if lastOpenState.wasActionOpen then actionModalOverlay.Visible = true end
                 if lastOpenState.wasHipSliderOpen then hipSliderOverlay.Visible = true end
-                if lastOpenState.wasLimitOpen then limitModalOverlay.Visible = true end
+                if lastOpenState.wasLimitOpen and limitModalOverlay then limitModalOverlay.Visible = true end
 
                 isGuiVisible = true
             end
@@ -1246,14 +1525,14 @@ local function initializeUI()
     ctbCorner.CornerRadius = UDim.new(0, 6)
     addProfessionalStroke(colorTriggerBtn)
 
-    local limitModalOverlay = Instance.new("Frame", gui)
+    limitModalOverlay = Instance.new("Frame", gui)
     limitModalOverlay.Size = UDim2.fromScale(1, 1)
     limitModalOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
     limitModalOverlay.BackgroundTransparency = 1
     limitModalOverlay.Visible = false
     limitModalOverlay.ZIndex = 70
 
-    local limitModalFrame = Instance.new("Frame", limitModalOverlay)
+    limitModalFrame = Instance.new("Frame", limitModalOverlay)
     limitModalFrame.Size = UDim2.fromOffset(300, 220)
     limitModalFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     limitModalFrame.Position = UDim2.fromScale(0.5, 0.5)
@@ -1454,8 +1733,8 @@ local function initializeUI()
         modalFrame.BackgroundTransparency = customUiConfig.bgTransparency
         fullModalFrame.BackgroundColor3 = customUiConfig.bgColor
         fullModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
-        limitModalFrame.BackgroundColor3 = customUiConfig.bgColor
-        limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
+        if limitModalFrame then limitModalFrame.BackgroundColor3 = customUiConfig.bgColor end
+        if limitModalFrame then limitModalFrame.BackgroundTransparency = customUiConfig.bgTransparency end
         hipSliderFrame.BackgroundColor3 = customUiConfig.bgColor
         hipSliderFrame.BackgroundTransparency = customUiConfig.bgTransparency
         hipSliderPanelBg.BackgroundColor3 = customUiConfig.textBgColor
@@ -1682,7 +1961,7 @@ local function initializeUI()
     wmCorner.CornerRadius = UDim.new(1, 0)
 
     local wheelImage = Instance.new("ImageLabel", wheelMask)
-    wheelImage.Size = UDim2.fromScale(1, -1)
+    wheelImage.Size = UDim2.fromScale(1, 1)
     wheelImage.AnchorPoint = Vector2.new(0.5, 0.5)
     wheelImage.Position = UDim2.fromScale(0.5, 0.5)
     wheelImage.Image = "rbxassetid://6020299385"
@@ -2153,14 +2432,15 @@ local function initializeUI()
     limitSaveBtn.MouseButton1Click:Connect(function()
         local newMin = tonumber(minLimitBox.Text)
         local newMax = tonumber(maxLimitBox.Text)
+        
         if newMin and newMax and newMin <= newMax then
             if activeConfiguringSlider == "WalkSpeed" then
                 minWalkSpeedLimit = newMin
                 maxWalkSpeedLimit = newMax
                 if updateWalkSpeedSlider then updateWalkSpeedSlider(currentWalkSpeed, false) end
             else
-                minAnimSpeedLimit = math.max(MIN_ANIM_SPEED, newMin)
-                maxAnimSpeedLimit = math.max(minAnimSpeedLimit, newMax)
+                minAnimSpeedLimit = newMin
+                maxAnimSpeedLimit = newMax
                 if updateAnimSpeedSlider then updateAnimSpeedSlider(currentAnimMultiplier, false) end
             end
             saveSavesToFile()
@@ -2268,16 +2548,22 @@ local function initializeUI()
         if labelText == "WalkSpeed" then updateWalkSpeedSlider = updateValue else updateAnimSpeedSlider = updateValue end
 
         resetBtn.MouseButton1Click:Connect(function()
+            updateValue(defaultVal, true)
+
             if labelText == "WalkSpeed" then
                 isWalkSpeedActive = false
-                currentWalkSpeed = 16
-                if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = 16 end) end
-                updateValue(16, true)
+                currentWalkSpeed = originalWalkSpeed or BASE_WALK_SPEED
+
+                if humanoid and humanoid.Parent then
+                    pcall(function()
+                        humanoid.WalkSpeed = currentWalkSpeed
+                    end)
+                end
                 showNotification("Reset WalkSpeed.")
-            else
+            elseif labelText == "Animation speed" then
                 isAnimSpeedActive = false
                 currentAnimMultiplier = 1.0
-                updateValue(1.0, true)
+                applyCurrentAnimationSpeed()
                 showNotification("Reset anim speed.")
             end
         end)
@@ -2309,27 +2595,59 @@ local function initializeUI()
         updateValue(defaultVal, true)
     end
 
-    createSlider(5, "WalkSpeed", 16, function(val, isReset)
+    createSlider(5, "WalkSpeed", BASE_WALK_SPEED, function(val, isReset)
         if isReset then
             isWalkSpeedActive = false
-            currentWalkSpeed = 16
-            if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = 16 end) end
+            currentWalkSpeed = originalWalkSpeed or BASE_WALK_SPEED
+
+            if humanoid and humanoid.Parent then
+                pcall(function()
+                    humanoid.WalkSpeed = currentWalkSpeed
+                end)
+            end
         else
             isWalkSpeedActive = true
             currentWalkSpeed = val
-            if humanoid and humanoid.Parent then pcall(function() humanoid.WalkSpeed = val end) end
-        end
-    end, function() return minWalkSpeedLimit end, function() return maxWalkSpeedLimit end)
 
-    createSlider(48, "Animation speed", 1.0, function(val, isReset)
-        if isReset then
-            isAnimSpeedActive = false
-            currentAnimMultiplier = 1.0
-        else
-            isAnimSpeedActive = true
-            currentAnimMultiplier = val
+            if humanoid and humanoid.Parent then
+                pcall(function()
+                    humanoid.WalkSpeed = currentWalkSpeed
+                end)
+            end
         end
-    end, function() return minAnimSpeedLimit end, function() return maxAnimSpeedLimit end)
+
+        applyCurrentAnimationSpeed()
+    end, function()
+        return minWalkSpeedLimit
+    end, function()
+        return maxWalkSpeedLimit
+    end)
+
+    createSlider(
+        48,
+        "Animation speed",
+        1.0,
+
+        function(value, isReset)
+            if isReset then
+                isAnimSpeedActive = false
+                currentAnimMultiplier = 1.0
+            else
+                isAnimSpeedActive = true
+                currentAnimMultiplier = tonumber(value) or 1.0
+            end
+
+            applyCurrentAnimationSpeed()
+        end,
+
+        function()
+            return minAnimSpeedLimit
+        end,
+
+        function()
+            return maxAnimSpeedLimit
+        end
+    )
 
     box.Position = UDim2.fromOffset(10, 63)
     btn.Position = UDim2.fromOffset(10, 103)
@@ -2440,14 +2758,13 @@ local function initializeUI()
     mIdBox.Text = ""
     mIdBox.ClearTextOnFocus = false
 
-    local isOverrideMode = true
     mTypeBtn = mkModal(modalFrame, "TextButton", 20, 130, 260, 30, "Type: Override / Loop")
-    isSpeedScaled = true
     mSpeedBtn = mkModal(modalFrame, "TextButton", 20, 170, 260, 30, "Speed scaled: ON")
     local isHipHeightEnabled = false
     mHipBtn = mkModal(modalFrame, "TextButton", 20, 210, 260, 30, "HipHeight")
 
     mHipBtn.MouseButton1Click:Connect(function()
+        activeHipHeightTarget = "single"
         hipSliderOverlay.Visible = true
         hipSliderFrame.Size = UDim2.fromOffset(0, 0)
         hipSliderFrame.Rotation = -8
@@ -2459,12 +2776,30 @@ local function initializeUI()
 
     hipConfirmBtn.MouseButton1Click:Connect(function()
         customHipHeightOffset = tempHipOffset
-        isHipHeightEnabled = true
-        mHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
+
+        if activeHipHeightTarget == "single" then
+            isHipHeightEnabled = true
+            mHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
+        elseif activeHipHeightTarget == "full" then
+            isFullHipHeightEnabled = true
+            fHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
+        elseif activeHipHeightTarget == "editFull" then
+            if pendingFullSetEditIndex and saveData.customSaves[pendingFullSetEditIndex] then
+                saveData.customSaves[pendingFullSetEditIndex].hipHeightEnabled = true
+                saveData.customSaves[pendingFullSetEditIndex].hipHeightOffset = customHipHeightOffset
+                saveSavesToFile()
+                refreshSavesUI()
+                showNotification("Updated full set HipHeight!")
+            end
+            pendingFullSetEditIndex = nil
+        end
+
+        activeHipHeightTarget = nil
+
         TweenService:Create(hipSliderOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
-        local t = TweenService:Create(hipSliderFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
-        t:Play()
-        t.Completed:Connect(function()
+        local closeTween = TweenService:Create(hipSliderFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
+        closeTween:Play()
+        closeTween.Completed:Connect(function()
             hipSliderOverlay.Visible = false
             hipSliderFrame.Rotation = 0
         end)
@@ -2534,10 +2869,18 @@ local function initializeUI()
     fClimbBox.Text = ""
     fClimbBox.ClearTextOnFocus = false
 
-    local isFullHipHeightEnabled = false
-    local fHipBtn = mkModal(fullModalFrame, "TextButton", 20, 390, 300, 28, "HipHeight")
+    fHipBtn = mkModal(
+        fullModalFrame,
+        "TextButton",
+        20,
+        390,
+        300,
+        28,
+        "HipHeight"
+    )
 
     fHipBtn.MouseButton1Click:Connect(function()
+        activeHipHeightTarget = "full"
         hipSliderOverlay.Visible = true
         hipSliderFrame.Size = UDim2.fromOffset(0, 0)
         hipSliderFrame.Rotation = -8
@@ -2545,19 +2888,6 @@ local function initializeUI()
 
         TweenService:Create(hipSliderOverlay, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { BackgroundTransparency = 0.6 }):Play()
         TweenService:Create(hipSliderFrame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(300, 195), Rotation = 0 }):Play()
-
-        hipConfirmBtn.MouseButton1Click:Connect(function()
-            customHipHeightOffset = tempHipOffset
-            isFullHipHeightEnabled = true
-            fHipBtn.Text = string.format("HipHeight: ON (%.1f)", customHipHeightOffset)
-            TweenService:Create(hipSliderOverlay, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.In), { BackgroundTransparency = 1 }):Play()
-            local t = TweenService:Create(hipSliderFrame, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.In), { Size = UDim2.fromOffset(0, 0), Rotation = 8 })
-            t:Play()
-            t.Completed:Connect(function()
-                hipSliderOverlay.Visible = false
-                hipSliderFrame.Rotation = 0
-            end)
-        end)
     end)
 
     local fConfirmBtn = mkModal(fullModalFrame, "TextButton", 20, 430, 140, 36, "Save full set")
@@ -2589,114 +2919,126 @@ local function initializeUI()
     local globalLoopConn, eventConn, enabled = nil, nil, false
 
     local function processAnimationLoop(dt)
-        if activeFullSetConnection then return end
-        if not animator or not animator.Parent then return end
-
-        if isWalkSpeedActive and humanoid and humanoid.Parent then
-            if humanoid.WalkSpeed ~= currentWalkSpeed then humanoid.WalkSpeed = currentWalkSpeed end
-        end
-
-        if rootPart and rootPart.Parent then
-            local velocity = rootPart.AssemblyLinearVelocity
-            local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-            if speedometerLabel and speedometerLabel.Parent then
-                speedometerLabel.Text = string.format("Current speed: %.1f", groundSpeed)
-            end
-        end
-
-        for _, animationTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-            if animationTrack ~= track and animationTrack ~= poseTrack then
-                if currentAnimMultiplier ~= 1.0 then
-                    pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
-                end
-            end
-        end
-
-        if enabled and (tallEnabled or shortEnabled or (track and box.Text ~= "")) then
-            if activeAnimConfig.isPose then
-                if poseTrack and not poseTrack.IsPlaying then pcall(function() poseTrack:Play(0.1, 1, 1) end) end
-            else
-                if track and (not track.IsPlaying or track.Priority ~= HIGH) then
-                    pcall(function() track.Priority = HIGH track:Play(0.1, 1, 0) end)
-                end
-            end
-        end
-
-        if not enabled then return end
-        if activeAnimConfig.isPose then
-            if poseTrack and not poseTrack.IsPlaying then pcall(function() poseTrack:Play(0.1, 1, 1) end) end
-            pcall(function() poseTrack:AdjustSpeed(currentAnimMultiplier) end)
+        if not animator or not animator.Parent then
             return
         end
 
-        if not track then return end
-        if not track.IsPlaying then pcall(function() track:Play(0.1, 1, 0) end) end
-        if not rootPart or not rootPart.Parent then return end
+        if isWalkSpeedActive and humanoid and humanoid.Parent then
+            if humanoid.WalkSpeed ~= currentWalkSpeed then
+                humanoid.WalkSpeed = currentWalkSpeed
+            end
+        end
 
-        local velocity = rootPart.AssemblyLinearVelocity
+        local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
         local groundSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+
+        if speedometerLabel and speedometerLabel.Parent then
+            speedometerLabel.Text = string.format("Current speed: %.1f", groundSpeed)
+        end
+
+        local walkScale = getWalkSpeedScale()
+        local dirMult = getDirectionMultiplier()
+        local state = humanoid:GetState()
+        
+        for _, animTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            if animTrack ~= track and animTrack ~= poseTrack and not isFullSetTrack(animTrack) then
+                local targetSpeed = currentAnimMultiplier
+                
+                if animTrack.Priority == Enum.AnimationPriority.Core or animTrack.Priority == Enum.AnimationPriority.Movement then
+                    targetSpeed *= dirMult
+                    if state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.RunningNoPhysics then
+                        targetSpeed = targetSpeed * walkScale
+                    elseif state == Enum.HumanoidStateType.Swimming then
+                        local rawSwimScale = groundSpeed / ROBLOX_SWIM_DIVISOR
+                        targetSpeed = targetSpeed * math.max(0.1, math.pow(rawSwimScale, LENIENT_SPEED_POWER))
+                    end
+                end
+                
+                adjustTrackSpeed(animTrack, targetSpeed)
+            end
+        end
+
+        if not enabled then
+            return
+        end
+
+        if activeFullSetConnection then
+            updateFullSetTrackSpeeds()
+            return
+        end
+
+        if activeAnimConfig.isPose then
+            if poseTrack then
+                local speed = getPoseTrackSpeed()
+
+                if not poseTrack.IsPlaying then
+                    pcall(function()
+                        poseTrack:Play(CROSSFADE_TIME, 1, speed)
+                    end)
+                end
+
+                adjustTrackSpeed(poseTrack, speed)
+            end
+
+            return
+        end
+
+        if not track then
+            return
+        end
+
+        local customSpeed = getCustomTrackSpeed()
+
+        if not track.IsPlaying then
+            pcall(function()
+                track.Priority = HIGH
+                track:Play(CROSSFADE_TIME, 1, customSpeed)
+            end)
+        end
 
         if groundSpeed < 0.3 then
             pcall(function()
-                local char = plr.Character
-                if char then
-                    local leftFoot = char:FindFirstChild("LeftFoot") or char:FindFirstChild("Left Leg")
-                    local rightFoot = char:FindFirstChild("RightFoot") or char:FindFirstChild("Right Leg")
-                    local leftHand = char:FindFirstChild("LeftHand") or char:FindFirstChild("Left Arm")
-                    local rightHand = char:FindFirstChild("RightHand") or char:FindFirstChild("Right Arm")
-                    
-                    local raycastParams = RaycastParams.new()
-                    raycastParams.FilterDescendantsInstances = {char}
-                    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                local length = track.Length
 
-                    local limbsOnGround, totalLimbsChecked = 0, 0
-                    for _, limb in ipairs({leftFoot, rightFoot, leftHand, rightHand}) do
-                        if limb and limb:IsA("BasePart") then
-                            totalLimbsChecked = totalLimbsChecked + 1
-                            local ray = workspace:Raycast(limb.Position, Vector3.new(0, -2.5, 0), raycastParams)
-                            if ray then limbsOnGround = limbsOnGround + 1 end
-                        end
-                    end
+                if length > 0 then
+                    local targetPosition = math.min(
+                        STATIONARY_REST_TIME,
+                        math.max(length - 0.001, 0)
+                    )
 
-                    if totalLimbsChecked > 0 and (limbsOnGround / totalLimbsChecked) >= 0.5 then
-                        local targetPosition = math.min(STATIONARY_REST_TIME, math.max((track.Length or 1) - 0.001, 0))
-                        track.TimePosition = track.TimePosition + (targetPosition - track.TimePosition) * math.clamp(dt * 10, 0, 1)
-                        track:AdjustSpeed(math.clamp(currentAnimMultiplier * 0.1, MIN_ANIM_SPEED, MAX_ANIM_SPEED))
-                        return
-                    end
+                    track.TimePosition += (
+                        targetPosition - track.TimePosition
+                    ) * math.clamp(dt * 5, 0, 1)
                 end
-
-                local targetPosition = math.min(STATIONARY_REST_TIME, math.max((track.Length or 1) - 0.001, 0))
-                track.TimePosition = track.TimePosition + (targetPosition - track.TimePosition) * math.clamp(dt * 5, 0, 1)
-                track:AdjustSpeed(math.clamp(currentAnimMultiplier * 0.5, MIN_ANIM_SPEED, MAX_ANIM_SPEED))
             end)
-        else
-            local animationSpeed
-            if activeAnimConfig.speedScaled then
-                local baseWalkSpeed = math.max(originalWalkSpeed, 0.001)
-                animationSpeed = math.clamp((groundSpeed / baseWalkSpeed) * currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-            else
-                animationSpeed = math.clamp(currentAnimMultiplier, MIN_ANIM_SPEED, MAX_ANIM_SPEED)
-            end
-            pcall(function() track:AdjustSpeed(animationSpeed) end)
         end
+
+        adjustTrackSpeed(track, customSpeed)
     end
 
     local function startAnimLoop()
-        if not animator then return end
-        if eventConn then eventConn:Disconnect(); eventConn = nil end
+        if not animator or not animator.Parent then
+            return
+        end
+
+        if eventConn then
+            eventConn:Disconnect()
+            eventConn = nil
+        end
 
         eventConn = animator.AnimationPlayed:Connect(function(animationTrack)
-            if not enabled then return end
-            if animationTrack ~= track and animationTrack ~= poseTrack then 
-                if currentAnimMultiplier ~= 1.0 then
-                    pcall(function() animationTrack:AdjustSpeed(currentAnimMultiplier) end)
-                end
+            if animationTrack == track
+                or animationTrack == poseTrack
+                or isFullSetTrack(animationTrack) then
+                applyCurrentAnimationSpeed()
             end
         end)
 
-        if globalLoopConn then return end
-        globalLoopConn = RunService.RenderStepped:Connect(processAnimationLoop)
+        if not globalLoopConn then
+            globalLoopConn = RunService.RenderStepped:Connect(processAnimationLoop)
+        end
+
+        applyCurrentAnimationSpeed()
     end
 
     refreshSavesUI = function()
@@ -2920,11 +3262,63 @@ local function initializeUI()
         end
     end)
 
+    btnTall.MouseButton1Click:Connect(function()
+        tallEnabled = not tallEnabled
+        if tallEnabled then
+            shortEnabled = false
+            btnShort.Text = "Short: OFF"
+            box.Text = "92807081069528"
+            loadAnim("92807081069528", true, false, true, 0.6, "Tall Animation")
+            enabled = true
+            btn.Text = "Stop"
+            btnTall.Text = "Tall: ON"
+            startAnimLoop()
+        else
+            btnTall.Text = "Tall: OFF"
+            if enabled then
+                enabled = false
+                btn.Text = "Play"
+                if track then fadeAndDestroyTrack(track); track = nil end
+                applyHipHeight(false)
+                box.Text = ""
+            end
+        end
+    end)
+
+    btnShort.MouseButton1Click:Connect(function()
+        shortEnabled = not shortEnabled
+        if shortEnabled then
+            tallEnabled = false
+            btnTall.Text = "Tall: OFF"
+            box.Text = "137317695640929"
+            loadAnim("137317695640929", true, false, true, -0.2, "Short Animation")
+            enabled = true
+            btn.Text = "Stop"
+            btnShort.Text = "Short: ON"
+            startAnimLoop()
+        else
+            btnShort.Text = "Short: OFF"
+            if enabled then
+                enabled = false
+                btn.Text = "Play"
+                if track then fadeAndDestroyTrack(track); track = nil end
+                applyHipHeight(false)
+                box.Text = ""
+            end
+        end
+    end)
+
+    btnRagdoll.MouseButton1Click:Connect(function()
+        ragdollEnabled = not ragdollEnabled
+        btnRagdoll.Text = "Ragdoll: " .. (ragdollEnabled and "ON" or "OFF")
+        setRagdoll(ragdollEnabled)
+    end)
+
     local function bind(char)
         humanoid = char:WaitForChild("Humanoid", 5)
         if not humanoid then return end
 
-        originalWalkSpeed = 16
+        originalWalkSpeed = humanoid.WalkSpeed
         currentWalkSpeed = originalWalkSpeed
         isWalkSpeedActive = false
         originalHipHeight = humanoid.HipHeight
@@ -2934,7 +3328,10 @@ local function initializeUI()
         walkSpeedConn = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
             if isWalkSpeedActive and humanoid.WalkSpeed ~= currentWalkSpeed then
                 humanoid.WalkSpeed = currentWalkSpeed
+                return
             end
+
+            applyCurrentAnimationSpeed()
         end)
 
         rootPart = char:WaitForChild("HumanoidRootPart", 5)
@@ -2962,14 +3359,14 @@ local function initializeUI()
             startAnimLoop()
             showNotification("Animation started")
         else
-            if track then pcall(function() track:Stop(0.1) track:Destroy() end) track = nil end
-            if poseTrack then pcall(function() poseTrack:Stop(0.1) poseTrack:Destroy() end) poseTrack = nil end
+            if track then fadeAndDestroyTrack(track); track = nil end
+            if poseTrack then fadeAndDestroyTrack(poseTrack); poseTrack = nil end
             
             stopFullCustomSet()
 
             if animator then
                 for _, animTrack in ipairs(animator:GetPlayingAnimationTracks()) do
-                    pcall(function() animTrack:Stop(0.1) end)
+                    pcall(function() animTrack:Stop(CROSSFADE_TIME) end)
                 end
             end
 

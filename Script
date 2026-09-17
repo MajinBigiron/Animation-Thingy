@@ -515,7 +515,7 @@ local function initializeUI()
     fullModalFrame.BackgroundColor3 = customUiConfig.bgColor
     fullModalFrame.BackgroundTransparency = customUiConfig.bgTransparency
     fullModalFrame.BorderSizePixel = 0
-    fullModalFrame.CanvasSize = UDim2.new(0, 0, 0, 465)
+    fullModalFrame.CanvasSize = UDim2.new(0, 0, 0, 515)
     fullModalFrame.ZIndex = 16
 
     local deleteModalOverlay = Instance.new("Frame", gui)
@@ -2107,8 +2107,11 @@ local function initializeUI()
     fClimbBox.Text = ""
     fClimbBox.ClearTextOnFocus = false
 
-    local fConfirmBtn = mkModal(fullModalFrame, "TextButton", 20, 400, 140, 36, "Save Full Set")
-    local fCancelBtn = mkModal(fullModalFrame, "TextButton", 180, 400, 140, 36, "Cancel")
+    local isFullHipHeightEnabled = false
+    local fHipBtn = mkModal(fullModalFrame, "TextButton", 20, 390, 300, 28, "Extra Hip Height: OFF")
+
+    local fConfirmBtn = mkModal(fullModalFrame, "TextButton", 20, 430, 140, 36, "Save Full Set")
+    local fCancelBtn = mkModal(fullModalFrame, "TextButton", 180, 430, 140, 36, "Cancel")
 
     local deleteModalTitle = Instance.new("TextLabel", deleteModalFrame)
     deleteModalTitle.Size = UDim2.fromOffset(240, 24)
@@ -2204,6 +2207,11 @@ local function initializeUI()
         mHipBtn.Text = "Extra Hip Height: " .. (isHipHeightEnabled and "ON" or "OFF")
     end)
 
+    fHipBtn.MouseButton1Click:Connect(function()
+        isFullHipHeightEnabled = not isFullHipHeightEnabled
+        fHipBtn.Text = "Extra Hip Height: " .. (isFullHipHeightEnabled and "ON" or "OFF")
+    end)
+
     local globalLoopConn, eventConn, enabled = nil, nil, false
 
     local function applyHipHeight(enableExtra)
@@ -2227,6 +2235,7 @@ local function initializeUI()
             pcall(function() trk:Stop(0.1) trk:Destroy() end)
         end
         activeFullSetTracks = {}
+        applyHipHeight(false)
     end
 
     local function loadAnim(idStr, speedScaled, isPose, hipHeightEnabled, displayName)
@@ -2281,6 +2290,8 @@ local function initializeUI()
         stopFullCustomSet()
         if track then pcall(function() track:Stop() end) track:Destroy() track = nil end
         if poseTrack then pcall(function() poseTrack:Stop() end) poseTrack:Destroy() poseTrack = nil end
+
+        applyHipHeight(saveDataEntry.hipHeightEnabled == true)
 
         activeFullSetTracks = {}
         local function loadSubTrack(idStr, looped)
@@ -2726,6 +2737,8 @@ local function initializeUI()
             tween.Completed:Connect(function() fullPopupOverlay.Visible = false fullModalFrame.Rotation = 0 end)
         else
             fNameBox.Text = "" fIdleBox.Text = "" fIdle2Box.Text = "" fWalkBox.Text = "" fRunBox.Text = "" fJumpBox.Text = "" fFallBox.Text = "" fSwimBox.Text = "" fSwimIdleBox.Text = "" fClimbBox.Text = ""
+            isFullHipHeightEnabled = false
+            fHipBtn.Text = "Extra Hip Height: OFF"
             fullPopupOverlay.Visible = true
             fullModalFrame.Size = UDim2.fromOffset(0, 0)
             fullModalFrame.Rotation = -8
@@ -2781,7 +2794,8 @@ local function initializeUI()
                 fallId = fFallBox.Text:match("%d+") or "",
                 swimId = fSwimBox.Text:match("%d+") or "",
                 swimIdleId = fSwimIdleBox.Text:match("%d+") or "",
-                climbId = fClimbBox.Text:match("%d+") or ""
+                climbId = fClimbBox.Text:match("%d+") or "",
+                hipHeightEnabled = isFullHipHeightEnabled
             })
             saveSavesToFile()
             refreshSavesUI()
